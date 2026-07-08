@@ -187,7 +187,7 @@ LOCK="$SUP_DIR/lock"
 if [ -f "$LOCK" ]; then
   oldpid=$(cat "$LOCK" 2>/dev/null || echo "")
   if [ -n "$oldpid" ] && kill -0 "$oldpid" 2>/dev/null; then
-    echo "另一個 supervisor（pid $oldpid）正在跑這個 repo" >&2; exit 75
+    echo "另一個 supervisor（pid ${oldpid}）正在跑這個 repo" >&2; exit 75
   fi
   log "清掉殘留 lock（pid ${oldpid:-?} 已不存在）"
 fi
@@ -239,7 +239,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   cost=$(extract_cost < "$out")
   total_cost=$(awk -v a="$total_cost" -v b="$cost" 'BEGIN{printf "%.4f", a+b}')
   class=$(classify "$ec" "$combined")
-  log "iteration $iter：class=$class exit=$ec cost=\$${cost} total=\$${total_cost}"
+  log "iteration ${iter}：class=$class exit=$ec cost=\$${cost} total=\$${total_cost}"
   printf '{"iteration":%s,"last_status":"%s","consecutive_failures":%s,"total_cost_usd":%s,"at":"%s"}\n' \
     "$iter" "$class" "$consecutive_failures" "$total_cost" "$(date '+%Y-%m-%dT%H:%M:%S')" > "$SUP_DIR/last_run.json"
 
@@ -273,7 +273,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
       do_sleep "$backoff"; iter=$((iter-1)) ;;
     killed|crash)
       consecutive_failures=$((consecutive_failures+1))
-      log "失敗（$class）$consecutive_failures/$MAX_FAIL，60s 後重試"
+      log "失敗（${class}）$consecutive_failures/${MAX_FAIL}，60s 後重試"
       do_sleep 60 ;;
     no_status)
       nostatus_count=$((nostatus_count+1))
@@ -287,5 +287,5 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   fi
 done
 
-log "達 max_iterations（$MAX_ITER），收工。總成本 \$${total_cost}"
+log "達 max_iterations（${MAX_ITER}），收工。總成本 \$${total_cost}"
 exit 0
