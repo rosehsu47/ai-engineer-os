@@ -22,6 +22,7 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--max-iterations N` / `--max-failures N` / `--model M` | 覆蓋 schedule.yml |
 | `--claude-flags "..."` | 附加給 claude CLI 的 flags |
 | `--yolo` | 用 `--dangerously-skip-permissions`（信任的 repo 才用；永不自動啟用） |
+| `--review` | 每個 DONE_TASK 後開全新 session 獨立審查（= schedule 的 `review_after_task`） |
 | `--wait-on-pause` | PAUSED 時每 5 分鐘輪詢而不是退出 |
 | `--dry-run` | 印出將執行的設定與指令，不花額度 |
 | `--self-test` | 零額度：用內嵌 fixtures 驗證錯誤分類器與睡眠計算 |
@@ -52,6 +53,17 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 - **交叉驗證**：agent 回報有進展但 checkpoint mtime 沒動 → 當失敗計
   （防 agent 忘記協定空轉）
 - `.ai/STOP` 隨時手動煞車；所有輪次的原始輸出留在 `.ai/supervisor/`
+
+## dashboard.sh — 靜態儀表板（零額度）
+
+```bash
+supervisor/dashboard.sh --repo /path/to/repo
+open /path/to/repo/.ai/reports/dashboard.html
+```
+
+從 `.ai/`（checkpoint、任務佇列、receipts frontmatter、supervisor 狀態、
+`ai/queue` 的 git log）渲染單檔 HTML：任務統計、收據表（含自評分數與
+獨立審查判定）、git 事件。純 bash/awk，不呼叫任何 LLM。
 
 ## 已知限制（誠實條款）
 

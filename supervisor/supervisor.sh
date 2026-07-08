@@ -17,7 +17,7 @@
 set -u
 
 # ---------- 參數與預設 ----------
-REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0
+REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
 MAX_ITER="" MAX_FAIL="" MODEL="" EXTRA_FLAGS=""
 
 while [ $# -gt 0 ]; do
@@ -29,6 +29,7 @@ while [ $# -gt 0 ]; do
     --model) MODEL="$2"; shift 2 ;;
     --claude-flags) EXTRA_FLAGS="$2"; shift 2 ;;
     --yolo) YOLO=1; shift ;;
+    --review) REVIEW=true; shift ;;
     --wait-on-pause) WAIT_ON_PAUSE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --self-test) SELF_TEST=1; shift ;;
@@ -177,6 +178,7 @@ NET_MAX=$(sched_get network_backoff_max_seconds 900)
 MAX_COST=$(sched_get max_cost_per_run_usd 5)
 MODEL="${MODEL:-$(sched_get claude_model sonnet)}"
 SCHED_FLAGS=$(sched_get extra_claude_flags "")
+REVIEW="${REVIEW:-$(sched_get review_after_task false)}"
 [ "$ONCE" = 1 ] && MAX_ITER=1
 
 PERM_FLAG="--permission-mode acceptEdits"
@@ -265,6 +267,18 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
         log "警告：回報 productive 但 checkpoint 未更新（協定違規），計失敗 $consecutive_failures/$MAX_FAIL"
       else
         consecutive_failures=0 net_retries=0
+        # 多 agent 審查輪：DONE_TASK 之後開全新 session 獨立審查（可選）
+        status_tok=$(grep -oE 'AIOS_STATUS: [A-Z_]+' "$combined" | tail -1 | awk '{print $2}')
+        if [ "$REVIEW" = "true" ] && [ "$status_tok" = "DONE_TASK" ]; then
+          log "review 輪：開 fresh session 審查上一個任務"
+          rout="$SUP_DIR/review-out.json"
+          ( cd "$REPO"; exec claude -p "/review" --output-format json --model "$MODEL" $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS ) >"$rout" 2>>"$err"
+          rcost=$(extract_cost < "$rout")
+          total_cost=$(awk -v a="$total_cost" -v b="$rcost" 'BEGIN{printf "%.4f", a+b}')
+          rline=$(extract_result < "$rout" | grep -oE 'AIOS_REVIEW: (PASS|FAIL)[^"]*' | tail -1)
+          log "review 結果：${rline:-（無 AIOS_REVIEW 行——檢查 /review skill 是否已安裝）} cost=\$${rcost}"
+          # FAIL 時 reviewer 已把修正任務排進 backlog，下一輪 /work 自然接手
+        fi
       fi
       do_sleep "$SLEEP_BETWEEN" ;;
     rate_limit)

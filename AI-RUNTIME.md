@@ -64,6 +64,20 @@ AIOS_STATUS: <STATUS> task=<id|none> score=<0-100|na> receipt=<相對路徑|none
 | `STOPPED` | .ai/STOP 存在 | 立即結束（exit 0） |
 | `CONTRACT_HALT` | 任務要求被契約禁止的操作 | 繼續下一輪（換任務） |
 
+## AIOS_REVIEW 協定（多 agent 審查輪，可選）
+
+`schedule.yml` 的 `review_after_task: true`（或 supervisor `--review`）時，
+每個 `DONE_TASK` 之後 supervisor 會開一個**全新 session** 跑 `/review`：
+獨立重評上一個任務（fresh context，非實作者自評）。輸出最後一行：
+
+```
+AIOS_REVIEW: <PASS|FAIL> task=<id> followup=<新任務id|none>
+```
+
+FAIL 時 reviewer **不自己修**——把修正任務（priority 1）排進 backlog，
+下一輪 /work 自然接手；審查判定同時附加在受審 receipt 尾端。
+這維持了單一寫手不變量：任何時刻只有一個 session 在改程式碼。
+
 ## checkpoint.json schema
 
 ```json
