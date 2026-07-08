@@ -1,7 +1,9 @@
 {
-  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的最小 Bash 白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線：契約與權限設定本身不可被 agent 修改。",
+  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的白名單：Edit/Write 需明確允許（實測 headless -p 下 acceptEdits 不足以放行），Bash 逐指令白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線（優先權高於 allow）：契約與權限設定本身不可被 agent 修改。",
   "permissions": {
     "allow": [
+      "Edit(**)",
+      "Write(**)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
