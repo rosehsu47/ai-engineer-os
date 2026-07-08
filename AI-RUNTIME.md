@@ -164,3 +164,13 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
 3. **rate-limit 偵測依賴 CLI 訊息格式**（如
    `You've hit your usage limit · resets 8pm (Asia/Taipei)`），版本間可能改變；
    supervisor 解析失敗時退回固定睡眠，所有未知錯誤都收斂到「有界重試」。
+4. **headless 寫入權限未經真實終端驗證**（2026-07-08 建置時的實測侷限）：
+   從巢狀 Claude session 呼叫 `claude -p` 時，子 session 的檔案寫入被父層
+   權限系統攔下，因此「/work 在 headless 下成功寫檔」只驗證到協定層
+   （被擋時 agent 正確回報 BLOCKED、還原 stash、零損害），沒驗證到放行路徑。
+   **首次使用檢查清單**：從一般終端機（不在 Claude session 內）跑
+   `supervisor.sh --repo X --once`；若 receipts/輸出顯示權限阻擋，
+   依序嘗試 (a) 確認目標 repo `.claude/settings.local.json` 有
+   `Edit(**)`/`Write(**)` allow 條目，(b) `--yolo`（信任的 repo 才用）。
+   /work 演算法本身已逐步實跑驗證（產物鏈：雙 commit、receipt、
+   checkpoint、done.yaml 全部正確）。
