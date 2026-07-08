@@ -1,0 +1,13 @@
+# supervisor 參數。扁平 key（bash 用 grep 讀，勿加巢狀結構）。
+# 命令列 flag 會覆蓋這裡的值。
+version: 1
+max_iterations_per_run: 10
+max_consecutive_failures: 3
+iteration_timeout_minutes: 30
+sleep_between_iterations_seconds: 20
+rate_limit_fallback_sleep_minutes: 30
+network_backoff_base_seconds: 30
+network_backoff_max_seconds: 900
+max_cost_per_run_usd: 5
+claude_model: "sonnet"
+extra_claude_flags: ""

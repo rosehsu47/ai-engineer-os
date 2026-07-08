@@ -1,0 +1,5 @@
+# 待辦佇列。schema 見 work-record-tool/AI-RUNTIME.md。
+# agent 規則：整檔重寫；挑選 = pending + 依賴已完成 + attempts < max_attempts，
+# priority 最小者優先，同 priority 取 created_at 最舊。
+version: 1
+tasks: []

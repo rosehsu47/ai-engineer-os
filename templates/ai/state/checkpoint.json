@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "updated_at": null,
+  "iteration": 0,
+  "phase": "idle",
+  "current_task_id": null,
+  "task_step": null,
+  "last_completed_task_id": null,
+  "last_receipt": null,
+  "last_commit": null,
+  "eval": { "attempts": 0, "last_score": null },
+  "blocked_reason": null,
+  "session_notes": null
+}
