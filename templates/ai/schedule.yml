@@ -10,4 +10,5 @@ network_backoff_base_seconds: 30
 network_backoff_max_seconds: 900
 max_cost_per_run_usd: 5
 claude_model: "sonnet"
+# 空白分隔的簡單 flags；值內不可含空白（supervisor 未加引號展開）
 extra_claude_flags: ""

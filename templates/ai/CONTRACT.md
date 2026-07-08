@@ -29,7 +29,9 @@
 ## 4. 禁止的操作
 
 - **任何 DELETE 級的破壞**：刪除任務範圍外的檔案、`git push --force`、
-  改寫 git 歷史、`rm -rf`
+  改寫 git 歷史、`rm -rf`、**丟棄工作區變更的 git 操作**
+  （`git checkout -- <path>`、`git restore`、`git reset --hard`、
+  `git branch -D`、`git stash drop`）——工作區可能有人類的 WIP
 - commit 到主分支（只能在工作分支）
 - **`git add -A` / `git add .`**——只 add 自己為了這個任務修改的檔案
   （工作區可能有人類未 commit 的工作，動了就是事故）

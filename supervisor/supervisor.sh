@@ -202,7 +202,7 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 # ---------- 主迴圈 ----------
-iter=0 consecutive_failures=0 net_retries=0 nostatus_count=0 total_cost=0
+iter=0 consecutive_failures=0 net_retries=0 nostatus_count=0 total_cost=0 rl_rounds=0
 log "supervisor 啟動：repo=$REPO model=$MODEL max_iter=$MAX_ITER perm=$PERM_FLAG"
 
 while [ "$iter" -lt "$MAX_ITER" ]; do
@@ -221,8 +221,9 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   out="$SUP_DIR/out.json"; err="$SUP_DIR/err.log"; : > "$out"; : > "$err"
   log "iteration $iter/$MAX_ITER 開始"
 
-  # watchdog：背景執行 + 輪詢（macOS 無 coreutils timeout）
-  ( cd "$REPO" && claude -p "/work" --output-format json --model "$MODEL" $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS ) >"$out" 2>"$err" &
+  # watchdog：背景執行 + 輪詢（macOS 無 coreutils timeout）。
+  # exec 讓 claude 取代子 shell，kill $cpid 才殺得到 claude 本體而非 wrapper。
+  ( cd "$REPO"; exec claude -p "/work" --output-format json --model "$MODEL" $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS ) >"$out" 2>"$err" &
   cpid=$!
   deadline=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
   while kill -0 "$cpid" 2>/dev/null; do
@@ -239,6 +240,9 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   cost=$(extract_cost < "$out")
   total_cost=$(awk -v a="$total_cost" -v b="$cost" 'BEGIN{printf "%.4f", a+b}')
   class=$(classify "$ec" "$combined")
+  # 「連續」網路失敗計數：只要這輪不是網路錯誤就歸零
+  [ "$class" != "network" ] && net_retries=0
+  [ "$class" != "rate_limit" ] && rl_rounds=0
   log "iteration ${iter}：class=$class exit=$ec cost=\$${cost} total=\$${total_cost}"
   printf '{"iteration":%s,"last_status":"%s","consecutive_failures":%s,"total_cost_usd":%s,"at":"%s"}\n' \
     "$iter" "$class" "$consecutive_failures" "$total_cost" "$(date '+%Y-%m-%dT%H:%M:%S')" > "$SUP_DIR/last_run.json"
@@ -263,7 +267,10 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
         consecutive_failures=0 net_retries=0
       fi
       do_sleep "$SLEEP_BETWEEN" ;;
-    rate_limit)  sleep_until_reset "$(cat "$combined")"; iter=$((iter-1)) ;;   # 不計輪、不計失敗
+    rate_limit)
+      rl_rounds=$((rl_rounds+1))
+      if [ "$rl_rounds" -gt 8 ]; then log "連續 rate-limit 超過 8 輪（約兩天），放棄——檢查帳號額度"; exit 1; fi
+      sleep_until_reset "$(cat "$combined")"; iter=$((iter-1)) ;;   # 不計輪、不計失敗，但有自己的上限
     network)
       net_retries=$((net_retries+1))
       if [ "$net_retries" -gt 6 ]; then log "網路重試超過 6 次，放棄"; exit 1; fi
