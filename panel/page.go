@@ -6,20 +6,39 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Engineer OS — 控制台</title>
 <style>
- body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:20px;max-width:1100px;margin:auto}
+ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0a0f1c;color:#e2e8f0;margin:0;padding:20px;max-width:1100px;margin:auto}
  h1{font-size:18px} .muted{color:#64748b;font-size:12px}
  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:14px}
- .repo{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px}
- .repo h2{font-size:15px;margin:0 0 6px;display:flex;align-items:center;gap:8px}
- .dot{width:9px;height:9px;border-radius:99px;display:inline-block}
+ .repo{background:#141b2d;border:1px solid #263047;border-radius:16px;padding:18px}
+ .repo h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+ .name{font-weight:700;color:#f1f5f9;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+ .meta{font-size:12px;color:#64748b;font-weight:400}
+ .dot{width:8px;height:8px;border-radius:99px;display:inline-block;flex-shrink:0}
  .running{background:#34d399}.idle{background:#64748b}.stopped{background:#ef4444}.paused{background:#f59e0b}
- .row{font-size:13px;margin:3px 0} .k{color:#94a3b8}
- ul{margin:4px 0;padding-left:18px;font-size:12px;color:#cbd5e1} li{margin:2px 0}
+ .row{font-size:12px;margin:4px 0;color:#94a3b8}
+ .stats{display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8;margin:10px 0}
+ .stats .bar{flex:1;height:4px;background:#1e293b;border-radius:99px;overflow:hidden}
+ .stats .bar i{display:block;height:100%;background:#34d399}
+ .stats .pct{color:#cbd5e1;font-variant-numeric:tabular-nums;font-weight:600}
+ .section-label{font-size:11px;color:#64748b;margin:14px 0 6px}
+ .task-card{display:flex;gap:12px;align-items:flex-start;background:#0f1c30;border-left:4px solid #34d399;border-radius:10px;padding:12px 14px;margin:6px 0}
+ .task-row{display:flex;gap:12px;align-items:flex-start;border-left:3px solid #38bdf866;padding:8px 12px;margin:6px 0}
+ .task-id{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;white-space:nowrap;padding-top:2px}
+ .task-card .task-id{color:#5eead4}
+ .task-row .task-id{color:#38bdf8}
+ .task-title{font-size:13px;color:#e2e8f0;line-height:1.5}
+ .task-row .task-title{color:#cbd5e1;font-size:12.5px}
+ .receipt-row{display:flex;gap:10px;align-items:center;border-left:3px solid #f59e0b66;padding:8px 12px;margin:6px 0;font-size:12px;color:#cbd5e1}
+ .badge{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;padding:2px 9px;border-radius:99px;white-space:nowrap;font-weight:700}
  .qa{background:#78350f33;border:1px solid #b4530966;border-radius:10px;padding:10px;margin-top:8px}
  .qa pre{white-space:pre-wrap;font-size:12px;margin:0 0 8px;font-family:inherit}
- textarea{width:100%;box-sizing:border-box;background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:8px;font-size:13px;min-height:60px}
+ textarea{width:100%;box-sizing:border-box;background:#0a0f1c;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:8px;font-size:13px;min-height:60px}
  button{background:#334155;color:#e2e8f0;border:0;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:6px}
- button:hover{background:#475569} button.primary{background:#4f46e5} button.danger{background:#7f1d1d}
+ button:hover{background:#475569} button.primary{background:#4f46e5}
+ .stopbtn{width:100%;background:transparent;border:1px solid #7f1d1d;color:#f87171;border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:14px}
+ .stopbtn:hover{background:#7f1d1d26}
+ .resumebtn{width:100%;background:transparent;border:1px solid #14532d;color:#4ade80;border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:14px}
+ .resumebtn:hover{background:#14532d26}
  code{background:#334155;padding:2px 6px;border-radius:5px;font-size:12px;user-select:all}
  .ship{background:#064e3b55;border:1px solid #10b98155;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px}
 </style></head><body>
@@ -33,21 +52,40 @@ async function post(url, data){ const b=new URLSearchParams(data);
 function answer(repo){ const t=document.getElementById('ans-'+CSS.escape(repo)).value;
   if(t.trim()) post('/api/answer',{repo:repo,text:t}); }
 function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
-function dot(s){ if(s.stopped) return ['stopped','已煞車'];
-  if(s.paused) return ['paused', s.paused_answered ? '已回答，待下一輪消化' : '等你回答'];
-  if(s.supervisor_alive) return ['running','supervisor 執行中 pid '+s.supervisor_pid];
-  return ['idle','待命']; }
+function dot(s){ if(s.stopped) return 'stopped';
+  if(s.paused) return 'paused';
+  if(s.supervisor_alive) return 'running';
+  return 'idle'; }
+function metaLine(s){
+  const parts=[];
+  if(s.stopped){ parts.push('<b style="color:#f87171">stopped</b>'); }
+  else if(s.paused){ parts.push('<b style="color:#fbbf24">'+(s.paused_answered?'paused · 已回覆':'paused · 待回覆')+'</b>'); }
+  else if(s.supervisor_alive){ parts.push('supervisor'); parts.push('<b style="color:#34d399">'+esc(s.phase||'executing')+'</b>'); parts.push('pid '+s.supervisor_pid); }
+  else { parts.push('<b style="color:#94a3b8">idle</b>'); }
+  parts.push('第 '+s.iteration+' 輪');
+  return parts.join(' · '); }
+function splitId(s){ const i=(s||'').indexOf(' '); if(i<0) return [s||'','']; return [s.slice(0,i), s.slice(i+1)]; }
+const STATUS_COLORS = {paused:['#f59e0b','#fbbf24'],done:['#10b981','#34d399'],success:['#10b981','#34d399'],
+  error:['#ef4444','#f87171'],failed:['#ef4444','#f87171'],rate_limit:['#f59e0b','#fbbf24'],no_status:['#475569','#94a3b8']};
+function badge(status){ const c=STATUS_COLORS[status]||['#475569','#94a3b8'];
+  return '<span class="badge" style="background:'+c[0]+'33;color:'+c[1]+'">'+esc(status)+'</span>'; }
+function taskRow(cls,t){ const [id,title]=splitId(t);
+  return '<div class="'+cls+'"><span class="task-id">'+esc(id)+'</span><span class="task-title">'+esc(title)+'</span></div>'; }
+function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s([\s\S]*)$/);
+  if(!m) return '<div class="receipt-row">'+esc(r)+'</div>';
+  return '<div class="receipt-row">'+badge(m[2])+'<span>'+esc(m[1])+' · '+esc(m[3])+'</span></div>'; }
 function card(s){
-  if(s.missing) return '<div class="repo"><h2>'+esc(s.name)+'</h2><p class="muted">尚未 /ai-init</p></div>';
-  const [cls,label]=dot(s);
-  let h='<div class="repo"><h2><span class="dot '+cls+'"></span>'+esc(s.name)+' <span class="muted">'+label+'</span></h2>';
-  h+='<div class="row"><span class="k">狀態</span> '+esc(s.phase||'?')+'（第 '+s.iteration+' 輪）';
-  if(s.last_run_status) h+='｜上輪 '+esc(s.last_run_status)+' $'+esc(s.last_run_cost||'0');
-  h+='</div>';
-  if(s.current_task) h+='<div class="row"><span class="k">進行中</span> '+esc(s.current_task)+'</div>';
-  h+='<div class="row"><span class="k">待辦 '+s.backlog_count+'</span>／<span class="k">完成 '+s.done_count+'</span></div>';
-  if((s.backlog||[]).length) h+='<ul>'+s.backlog.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul>';
-  if((s.receipts||[]).length) h+='<div class="row k">最近收據</div><ul>'+s.receipts.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul>';
+  if(s.missing) return '<div class="repo"><h2><span class="name">'+esc(s.name)+'</span></h2><p class="muted">尚未 /ai-init</p></div>';
+  let h='<div class="repo"><h2><span class="dot '+dot(s)+'"></span><span class="name">'+esc(s.name)+'</span>'+
+    '<span class="meta">'+metaLine(s)+'</span></h2>';
+  if(s.last_run_status) h+='<div class="row">上輪 '+esc(s.last_run_status)+' $'+esc(s.last_run_cost||'0')+'</div>';
+  const total=s.backlog_count+s.done_count, pct=total>0?Math.round(s.done_count/total*100):0;
+  h+='<div class="stats"><span>待辦 '+s.backlog_count+' · 完成 '+s.done_count+'</span>'+
+     '<span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div>';
+  if(s.current_task){ h+='<div class="section-label">進行中</div>'+taskRow('task-card',s.current_task); }
+  h+='<div class="section-label">待辦 '+s.backlog_count+' / 完成 '+s.done_count+'</div>';
+  if((s.backlog||[]).length) h+=s.backlog.map(t=>taskRow('task-row',t)).join('');
+  if((s.receipts||[]).length){ h+='<div class="section-label">最近收據</div>'+s.receipts.map(receiptRow).join(''); }
   if(s.paused){
     h+='<div class="qa"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>';
     if(s.paused_answered){ h+='<span class="muted">已有回覆，下一輪 /work 會消化並繼續。</span>'; }
@@ -57,10 +95,9 @@ function card(s){
   if(s.shippable>0){
     h+='<div class="ship">🚢 ai/queue 領先 '+s.shippable+' 個 commit，可出貨：'+
        '<br><code>claude</code> 內執行 <code>/ai-ship '+esc(s.path)+'</code></div>'; }
-  h+='<div>';
-  if(s.stopped) h+='<button onclick="stopRepo('+JSON.stringify(s.path)+',\'resume\')">解除煞車</button>';
-  else h+='<button class="danger" onclick="stopRepo('+JSON.stringify(s.path)+',\'stop\')">STOP 煞車</button>';
-  h+='</div></div>'; return h; }
+  if(s.stopped) h+='<button class="resumebtn" onclick="stopRepo('+JSON.stringify(s.path)+',\'resume\')">解除煞車</button>';
+  else h+='<button class="stopbtn" onclick="stopRepo('+JSON.stringify(s.path)+',\'stop\')">■ STOP 煞車</button>';
+  h+='</div>'; return h; }
 async function refresh(){
   try{ const r=await fetch('/api/state'); const list=await r.json();
     document.getElementById('grid').innerHTML=list.map(card).join('');

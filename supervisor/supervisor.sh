@@ -123,6 +123,45 @@ do_sleep() { # 可被 AIOS_FAKE_SLEEP=1 假化（self-test 用）
   if [ "${AIOS_FAKE_SLEEP:-0}" = 1 ]; then echo "FAKE_SLEEP ${1}s"; else sleep "$1"; fi
 }
 
+# ---------- quota 煞車（5h / 7d 用量達門檻即停，保留個人額度） ----------
+# parse_usage_pct <claude /usage 的 result 文字> <session|week> → 百分比數字或空字串
+# 純文字解析，與 API 呼叫分離以便 self-test 覆蓋。
+parse_usage_pct() {
+  local text="$1" label="$2" line
+  case "$label" in
+    session) line=$(printf '%s' "$text" | grep -m1 -E 'Current session') ;;
+    week)    line=$(printf '%s' "$text" | grep -m1 -E 'Current week') ;;
+  esac
+  printf '%s' "$line" | grep -oE '[0-9]+%' | head -1 | tr -d '%'
+}
+
+# quota_check：查 5h/7d 用量，達門檻寫 .ai/STOP 並回傳 1（查不到就放行，回傳 0）
+quota_check() {
+  local thresh out result sess week reason
+  thresh=$(sched_get quota_stop_threshold_pct 80)
+  out=$( (cd "$REPO" && claude -p "/usage" --output-format json) 2>/dev/null )
+  [ -z "$out" ] && return 0
+  result=$(printf '%s' "$out" | extract_result)
+  [ -z "$result" ] && return 0
+  sess=$(parse_usage_pct "$result" session)
+  week=$(parse_usage_pct "$result" week)
+  reason=""
+  if [ -n "$sess" ] && [ "$sess" -ge "$thresh" ] 2>/dev/null; then
+    reason="5 小時額度已用 ${sess}%（門檻 ${thresh}%）"
+  fi
+  if [ -n "$week" ] && [ "$week" -ge "$thresh" ] 2>/dev/null; then
+    [ -n "$reason" ] && reason="${reason}；"
+    reason="${reason}7 天額度已用 ${week}%（門檻 ${thresh}%）"
+  fi
+  if [ -n "$reason" ]; then
+    log "quota 煞車：$reason —— 保留給個人使用"
+    printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
+      "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
+    return 1
+  fi
+  return 0
+}
+
 # ---------- self-test：零額度驗證分類器 ----------
 run_self_test() {
   local dir pass=0 fail=0
@@ -150,6 +189,17 @@ run_self_test() {
   echo "睡眠計算（AIOS_FAKE_SLEEP=1）："
   AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "resets 8pm blah" | sed 's/^/  /'
   AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "無法解析的訊息" | sed 's/^/  /'
+  echo "quota 文字解析（parse_usage_pct）："
+  usage_txt='Current session: 6% used · resets Jul 9 at 11:30pm (Asia/Taipei)
+Current week (all models): 44% used · resets Jul 15 at 12pm (Asia/Taipei)
+Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
+  tq() { # tq <名稱> <label> <期望值>
+    local got; got=$(parse_usage_pct "$usage_txt" "$2")
+    if [ "$got" = "$3" ]; then pass=$((pass+1)); echo "  ok  $1 -> $got"
+    else fail=$((fail+1)); echo "  FAIL $1 -> got=$got want=$3"; fi
+  }
+  tq "5h 用量"  session 6
+  tq "7d 用量"  week    44
   rm -rf "$dir"
   echo "self-test: pass=$pass fail=$fail"
   [ "$fail" = 0 ]
@@ -216,6 +266,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
     if [ "$WAIT_ON_PAUSE" = 1 ]; then do_sleep 300; iter=$((iter-1)); continue; fi
     exit 2
   fi
+  quota_check || exit 0
 
   ckpt="$REPO/.ai/state/checkpoint.json"
   mtime_before=$(stat -f %m "$ckpt" 2>/dev/null || echo 0)

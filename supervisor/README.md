@@ -53,6 +53,9 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 - **交叉驗證**：agent 回報有進展但 checkpoint mtime 沒動 → 當失敗計
   （防 agent 忘記協定空轉）
 - `.ai/STOP` 隨時手動煞車；所有輪次的原始輸出留在 `.ai/supervisor/`
+- **quota 煞車**：每輪開跑前用 `claude -p "/usage"`（零成本、~0.5s）查 5h／7d
+  用量，達 `quota_stop_threshold_pct`（預設 80，`.ai/schedule.yml` 可調）即寫
+  `.ai/STOP` 停下，保留個人額度；查不到用量時放行，不誤殺
 
 ## dashboard.sh — 靜態儀表板（零額度）
 

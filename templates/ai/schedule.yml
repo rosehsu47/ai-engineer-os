@@ -9,6 +9,8 @@ rate_limit_fallback_sleep_minutes: 30
 network_backoff_base_seconds: 30
 network_backoff_max_seconds: 900
 max_cost_per_run_usd: 5
+# 5h 或 7d 額度用量達此百分比即寫 .ai/STOP 煞車，保留個人額度（設 101 停用此檢查）
+quota_stop_threshold_pct: 80
 # true = 每個 DONE_TASK 後開全新 session 獨立審查（多一次 session 成本）
 review_after_task: false
 claude_model: "sonnet"
