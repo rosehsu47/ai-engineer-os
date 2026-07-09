@@ -12,9 +12,12 @@
         ┌─────────────────┼──────────────────────┐
         │ 安裝/種任務       │ 隨時介入              │ 出貨
         ▼                 ▼                      ▼
-   /ai-init         .ai/STOP（煞車）          /ai-ship
-        │           .ai/PAUSED（回答問題）    （push + GitHub PR）
-        ▼                                        ▲
+   /ai-init          aios-panel（網頁控制台）  /ai-ship
+   /ai-task          ├ 狀態總覽/待辦/收據      （push + GitHub PR）
+        │            ├ 回答 PAUSED（textarea）    ▲
+        │            └ STOP 煞車按鈕              │
+        │            （＝/ai-answer、touch STOP   │
+        ▼             的同一條協定檔路徑）         │
 ┌───────────────── 目標 repo ─────────────────┐  │
 │  .ai/  ←──────── 唯一的狀態載體 ──────────┐  │  │
 │   ├ CONTRACT.md（規則）  ├ tasks/（佇列）  │  │  │
