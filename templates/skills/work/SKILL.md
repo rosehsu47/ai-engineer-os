@@ -26,7 +26,13 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
 
 ### 步驟 0：守門
 - `.ai/STOP` 存在 → 印 `AIOS_STATUS: STOPPED task=none score=na receipt=none`，結束（什麼都不寫）
-- `.ai/PAUSED` 存在 → 印 `AIOS_STATUS: PAUSED task=none score=na receipt=none`，結束
+- `.ai/PAUSED` 存在：
+  - **含 `## 人類回覆` 節** → 先消化回覆再繼續：把決定路由到正確的地方
+    （影響某任務的做法 → 附記進該任務 `description`，前綴「人類回覆（日期）：」，
+    必要時調整 acceptance；「不要做了」→ 該任務移入 done.yaml `result: abandoned`；
+    通用背景知識 → `state/memory.md`），然後**刪除 `.ai/PAUSED`**
+    （唯一允許刪除的協定檔——它是信號旗，內容已落地），繼續步驟 1
+  - 沒有回覆節 → 印 `AIOS_STATUS: PAUSED task=none score=na receipt=none`，結束
 - **完全無法寫入**（Edit/Write 全被權限擋、連 `.ai/` 都寫不了）→
   不再嘗試任何寫入（含 `.ai/PAUSED`——它也寫不進去），直接印
   `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，並在狀態行之前

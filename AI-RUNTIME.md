@@ -61,6 +61,11 @@ AIOS_STATUS: <STATUS> task=<id|none> score=<0-100|na> receipt=<相對路徑|none
 | `QUEUE_EMPTY` | 佇列沒有可執行任務 | 正常結束（exit 0） |
 | `BLOCKED` | 無法進行：權限/環境阻擋（含「完全無法寫入」的免寫出口——此時什麼檔案都不碰，只印狀態行） | 繼續下一輪 |
 | `PAUSED` | 需要人類（.ai/PAUSED 已寫入問題） | 印出問題後停止（exit 2） |
+
+**PAUSED 的回覆協定**：任何介面（/ai-answer、panel 網頁、直接編輯檔案）
+把回答**附加**成 `## 人類回覆（時間）` 節即可；下一輪 /work 步驟 0 讀到
+回覆節會統一路由（任務描述/abandoned/memory.md）並刪旗繼續。PAUSED 是
+協定中唯一允許刪除的檔案——信號旗，內容在刪除前已落地他處。
 | `STOPPED` | .ai/STOP 存在 | 立即結束（exit 0） |
 | `CONTRACT_HALT` | 任務要求被契約禁止的操作 | 繼續下一輪（換任務） |
 
