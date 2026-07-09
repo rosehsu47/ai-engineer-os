@@ -2,14 +2,10 @@
 
 A generic autonomous Claude Code agent runtime: install a protocol + skill
 set into any target repo, then run it unattended via a supervisor loop with
-crash/rate-limit recovery, checkpoint/resume, audited receipts, and a local
-web control panel.
-
-Beyond a one-off `claude` session, this repo ships an agent runtime that lets
-a Claude Code agent work **autonomously** in any target repo — with persistent
-memory, checkpoint/resume, self-evaluation, audited receipts, and
-crash/rate-limit recovery. **Operator's manual with flow diagrams:
-[`MANUAL.md`](MANUAL.md)**; protocol spec: [`AI-RUNTIME.md`](AI-RUNTIME.md).
+persistent memory, checkpoint/resume, self-evaluation, audited receipts, a
+local web control panel, and crash/rate-limit recovery. **Operator's manual
+with flow diagrams: [`MANUAL.md`](MANUAL.md)**; protocol spec:
+[`AI-RUNTIME.md`](AI-RUNTIME.md).
 
 ```bash
 # 1. Install the runtime into a target repo (interview fills the CONTRACT)
