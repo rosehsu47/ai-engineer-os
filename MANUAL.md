@@ -40,7 +40,7 @@
 ## 2. 首次安裝（每個 repo 一次）
 
 ```
- cd work-record-tool ── claude ── /ai-init /path/to/repo
+ cd ai-engineer-os ── claude ── /ai-init /path/to/repo
                                       │
                      ┌────────────────┴───────────────┐
                      │ 檢查：git repo？.ai/ 不存在？    │

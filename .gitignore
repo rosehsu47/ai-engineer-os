@@ -1,0 +1,12 @@
+# OS cruft
+.DS_Store
+
+# panel/ (Go) build artifacts
+panel/aios-panel
+panel/*.exe
+panel/*.test
+
+# shell/editor scratch
+*.log
+*.tmp
+*~

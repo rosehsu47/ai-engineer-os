@@ -3,7 +3,7 @@
 #
 # 每輪開一個全新的 `claude -p "/work"` session（狀態都在 .ai/ 檔案裡，
 # 不用 --resume），讀取 AIOS_STATUS 與錯誤徵兆做分類與復原。
-# 協定見 work-record-tool/AI-RUNTIME.md；錯誤分類表見本檔 classify()。
+# 協定見 AI-RUNTIME.md；錯誤分類表見本檔 classify()。
 #
 # 用法：
 #   supervisor.sh --repo /path/to/repo [--once] [--max-iterations N]

@@ -21,7 +21,7 @@ description: 把目標 repo 的 ai/queue 分支推上 GitHub 並開/更新 PR（
 1. 產生 PR 描述：依 `/ai-report` 的規則，把 `ai/queue` 上所有
    `[T-NNN]` commit 對應的 receipts 彙整成「做了什麼/為什麼/怎麼驗證」
    三節 + 任務表（含 rubric 分數與獨立審查判定）。
-   結尾加一行：`🤖 Generated with AI Engineer OS (work-record-tool)`
+   結尾加一行：`🤖 Generated with AI Engineer OS`
 2. 給使用者看 PR 標題與描述草稿，**確認後**才執行：
    `git push -u origin ai/queue`
 3. 已有 open PR（`gh pr list --head ai/queue`）→ `gh pr edit` 更新描述；

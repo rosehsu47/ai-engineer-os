@@ -4,7 +4,7 @@
 （Go 標準庫），只綁 127.0.0.1、無認證——僅供本機使用。
 
 ```bash
-cd work-record-tool/panel
+cd ai-engineer-os/panel
 go build -o ~/bin/aios-panel .        # 或 go run .
 aios-panel -repos /path/a,/path/b     # 或把路徑一行一個寫進 ~/.aios-repos
 open http://127.0.0.1:7777

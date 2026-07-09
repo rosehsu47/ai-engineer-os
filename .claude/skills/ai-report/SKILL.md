@@ -6,8 +6,8 @@ description: 把目標 repo 的 .ai/receipts 彙整成日報/週報（含 PR 描
 # /ai-report — 從 receipts 產工程報告
 
 讀 `{repo}/.ai/receipts/` 的收據 frontmatter 與內文，彙整成一份報告。
-**只用收據裡有的事實，不腦補**——這份報告的下游是履歷管線
-（CONVENTIONS.md §8），證據紀律等同履歷。
+**只用收據裡有的事實，不腦補**——這份報告的下游可能是履歷或工程週報，
+證據紀律等同履歷。
 
 ## 範圍解析
 - `daily` → 今天（無收據則取最近有收據的一天，並註明）
