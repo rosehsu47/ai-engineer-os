@@ -85,10 +85,10 @@ classify() {
     QUEUE_EMPTY)  echo queue_empty; return ;;
     DONE_TASK|TASK_PARTIAL|BLOCKED|CONTRACT_HALT) echo productive; return ;;
   esac
-  if printf '%s' "$all" | grep -qiE 'usage limit|rate.?limit|resets [0-9]{1,2}[[:space:]]?(am|pm)'; then
+  if printf '%s' "$all" | grep -qiE 'hit your [a-z ]*limit|(usage|session|weekly) limit|rate.?limit|resets [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)'; then
     echo rate_limit; return
   fi
-  if printf '%s' "$all" | grep -qiE 'overloaded|529|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed|socket hang'; then
+  if printf '%s' "$all" | grep -qiE 'overloaded|529|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed|socket hang|temporarily unavailable'; then
     echo network; return
   fi
   case "$ec" in 124|137|143) echo killed; return ;; esac
@@ -100,18 +100,20 @@ classify() {
 
 # ---------- rate-limit 睡眠（解析 "resets 8pm" 失敗則固定 fallback） ----------
 sleep_until_reset() { # $1 = 全部輸出文字
-  local hour ampm target now cap
-  hour=$(printf '%s' "$1" | grep -oiE 'resets [0-9]{1,2}[[:space:]]?(am|pm)' | head -1 | grep -oE '[0-9]{1,2}')
-  ampm=$(printf '%s' "$1" | grep -oiE 'resets [0-9]{1,2}[[:space:]]?(am|pm)' | head -1 | grep -oiE '(am|pm)' | tr 'A-Z' 'a-z')
+  local ts hour min ampm target now cap
+  ts=$(printf '%s' "$1" | grep -oiE 'resets [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)' | head -1)
+  hour=$(printf '%s' "$ts" | grep -oE '[0-9]{1,2}' | head -1)
+  min=$(printf '%s' "$ts" | grep -oE ':[0-9]{2}' | head -1 | tr -d ':')
+  ampm=$(printf '%s' "$ts" | grep -oiE '(am|pm)' | tail -1 | tr 'A-Z' 'a-z')
   now=$(date +%s)
   if [ -n "${hour:-}" ] && [ -n "${ampm:-}" ]; then
-    target=$(date -j -f '%Y-%m-%d %I%p' "$(date '+%Y-%m-%d') ${hour}${ampm}" +%s 2>/dev/null || echo "")
+    target=$(date -j -f '%Y-%m-%d %I:%M%p' "$(date '+%Y-%m-%d') ${hour}:${min:-00}${ampm}" +%s 2>/dev/null || echo "")
     if [ -n "$target" ]; then
       [ "$target" -le "$now" ] && target=$((target + 86400))
       target=$((target + 120))                       # reset 後多等 2 分鐘
       cap=$((now + 21600))                           # 上限 6 小時
       [ "$target" -gt "$cap" ] && target=$cap
-      log "rate limit: 睡到 $(date -r "$target" '+%H:%M')（resets ${hour}${ampm}）"
+      log "rate limit: 睡到 $(date -r "$target" '+%H:%M')（resets ${hour}:${min:-00}${ampm}）"
       do_sleep $((target - now)); return
     fi
   fi
@@ -180,14 +182,20 @@ run_self_test() {
   t "手動停止"       stopped     0 '{"result":"AIOS_STATUS: STOPPED task=none score=na receipt=none"}'
   t "額度用盡"       rate_limit  1 "You've hit your usage limit · resets 8pm (Asia/Taipei)"
   t "session limit"  rate_limit  1 "You've hit your session limit · resets 10am"
+  t "session limit 帶分鐘" rate_limit 1 "You've hit your session limit · resets 6:50am (Asia/Taipei)
+/upgrade or /usage-credits to finish what you're working on."
+  t "limit+classifier 混合" rate_limit 1 "Error: claude-opus-4-8[1m] is temporarily unavailable, so auto mode cannot determine the safety of Write right now.
+You've hit your session limit · resets 6:50am (Asia/Taipei)"
   t "網路斷線"       network     1 'Error: fetch failed ECONNRESET'
   t "伺服器過載"     network     1 'API Error: 529 overloaded_error'
+  t "classifier 暫時不可用" network 1 'Error: claude-opus-4-8[1m] is temporarily unavailable, so auto mode cannot determine the safety of Write right now. Wait briefly and then try this action again.'
   t "watchdog 殺掉"  killed      137 ''
   t "崩潰"           crash       1 'segfault or whatever'
   t "is_error"       crash       0 '{"is_error": true, "result":"boom"}'
   t "協定漂移"       no_status   0 '{"result":"我做完了但忘記印狀態行"}'
   echo "睡眠計算（AIOS_FAKE_SLEEP=1）："
   AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "resets 8pm blah" | sed 's/^/  /'
+  AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "resets 6:50am (Asia/Taipei)" | sed 's/^/  /'
   AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "無法解析的訊息" | sed 's/^/  /'
   echo "quota 文字解析（parse_usage_pct）："
   usage_txt='Current session: 6% used · resets Jul 9 at 11:30pm (Asia/Taipei)

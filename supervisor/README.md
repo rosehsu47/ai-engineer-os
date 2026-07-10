@@ -37,8 +37,8 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `AIOS_STATUS: PAUSED` / `.ai/PAUSED` | 需要人類 | 印出問題，exit 2（`--wait-on-pause` 則輪詢） |
 | `AIOS_STATUS: QUEUE_EMPTY` | 佇列空 | exit 0 |
 | `DONE_TASK / TASK_PARTIAL / BLOCKED / CONTRACT_HALT` | 有生產力 | 歸零失敗計數，睡 20s 續跑 |
-| `usage limit` / `resets 8pm` 等 | rate limit | 解析 reset 時間睡到該時 +2 分（上限 6h；解析失敗睡 30 分）；**不計失敗** |
-| `ECONNRESET / 529 / fetch failed` 等 | 網路 | 指數退避 30s→900s，最多 6 次 |
+| `usage/session limit` / `resets 8pm` / `resets 6:50am` 等 | rate limit | 解析 reset 時間（含帶分鐘格式）睡到該時 +2 分（上限 6h；解析失敗睡 30 分）；**不計失敗** |
+| `ECONNRESET / 529 / fetch failed / temporarily unavailable`（含權限分類器暫時不可用）等 | 網路 | 指數退避 30s→900s，最多 6 次 |
 | exit 124/137/143（watchdog 砍掉） | 逾時 | 失敗 +1，重啟 |
 | 其他非零 exit / `is_error` | 未知崩潰 | 失敗 +1，睡 60s 重試 |
 | exit 0 但沒有 AIOS_STATUS 行 | 協定漂移 | 警告，累計 3 次退出（檢查 /work skill 是否還在目標 repo） |
@@ -68,11 +68,32 @@ open /path/to/repo/.ai/reports/dashboard.html
 `ai/queue` 的 git log）渲染單檔 HTML：任務統計、收據表（含自評分數與
 獨立審查判定）、git 事件。純 bash/awk，不呼叫任何 LLM。
 
+## 停滯了怎麼辦（recovery SOP）
+
+supervisor 不在跑、agent 看起來沒動時，三個檔案就能判斷發生什麼事：
+
+```bash
+tail -20 {repo}/.ai/supervisor/run.log     # supervisor 最後在做什麼、為何退出
+cat {repo}/.ai/supervisor/last_run.json    # 最後一輪的分類結果
+cat {repo}/.ai/state/checkpoint.json       # agent 做到哪個子步驟
+```
+
+然後**直接重跑 `supervisor.sh --repo {repo}` 就是恢復**——狀態全在檔案裡，
+crash 後的恢復與正常啟動是同一條路：checkpoint 會從中斷的子步驟續作，
+殘留 lock 以 pid 存活判定自動清除。特殊情況只有兩種：
+- `.ai/PAUSED` 存在 → 先回答問題（panel 或 `/ai-answer`），再重跑
+- `.ai/STOP` 存在 → 確認原因（quota 煞車會把原因寫在檔內）後刪掉，再重跑
+
+若 run.log 顯示是「未知崩潰 ×3 → 退出」而輸出裡其實是額度訊息，代表
+CLI 又換了 limit 文案、分類器沒認出來——把原文加進 `--self-test` 的
+fixtures、放寬 `classify()` 的 regex（先加測試再改，見下方限制 1）。
+
 ## 已知限制（誠實條款）
 
-1. **rate-limit 偵測靠 CLI 訊息字串**（`You've hit your usage limit ·
-   resets 8pm (Asia/Taipei)` 這類格式），CLI 改版可能失效——失效時會落到
-   「未知崩潰」分類，行為退化成有界重試，不會爆走。
+1. **rate-limit 偵測靠 CLI 訊息字串**（已知變體：`usage limit` /
+   `session limit`、`resets 8pm` / `resets 6:50am`——limit 種類與帶分鐘的
+   時間都要能認），CLI 改版可能失效——失效時會落到「未知崩潰」分類，
+   行為退化成有界重試後退出，不會爆走；修法見上方 recovery SOP。
 2. **權限**：預設 `acceptEdits` + 目標 repo 的 Bash allowlist。agent 用到
    白名單外的指令會被無聲拒絕，任務通常以 blocked/failed 收場——去
    `.claude/settings.local.json` 補白名單。注意 `acceptEdits` 只放行
