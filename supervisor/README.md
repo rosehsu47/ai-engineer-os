@@ -53,9 +53,16 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 - **交叉驗證**：agent 回報有進展但 checkpoint mtime 沒動 → 當失敗計
   （防 agent 忘記協定空轉）
 - `.ai/STOP` 隨時手動煞車；所有輪次的原始輸出留在 `.ai/supervisor/`
-- **quota 煞車**：每輪開跑前用 `claude -p "/usage"`（零成本、~0.5s）查 5h／7d
-  用量，達 `quota_stop_threshold_pct`（預設 80，`.ai/schedule.yml` 可調）即寫
-  `.ai/STOP` 停下，保留個人額度；查不到用量時放行，不誤殺
+- **quota 雙門檻**：每輪開跑前用 `claude -p "/usage"`（零成本、~0.5s）查 5h／7d
+  用量（查不到就放行，不誤殺）：
+  - **軟門檻 `quota_wait_threshold_pct`**（預設 60）：5h 用量達標就**不開新任務**，
+    每 `quota_wait_recheck_minutes`（預設 20）分鐘再查，降回門檻下自動繼續——
+    任務只在額度足以整輪跑完時開工，不會中途斷頭、下輪重讀浪費 token。
+    只看 5h 額度（會 reset、值得等；7d 要等數天，交給硬門檻）。
+    軟硬門檻的差距（預設 60→80）就是「一個任務的預算」；等待逾 24h 仍未降
+    （通常是個人使用持續佔用）則寫 STOP 收工。設 0 停用。
+  - **硬門檻 `quota_stop_threshold_pct`**（預設 80）：5h 或 7d 任一達標即寫
+    `.ai/STOP` 停下，保留個人額度（設 101 停用）
 
 ## dashboard.sh — 靜態儀表板（零額度）
 

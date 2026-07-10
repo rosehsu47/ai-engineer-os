@@ -137,31 +137,57 @@ parse_usage_pct() {
   printf '%s' "$line" | grep -oE '[0-9]+%' | head -1 | tr -d '%'
 }
 
-# quota_check：查 5h/7d 用量，達門檻寫 .ai/STOP 並回傳 1（查不到就放行，回傳 0）
+# quota_decide <sess%> <week%> <wait門檻> <stop門檻> → stop|wait|go
+# 純函式（self-test 直接覆蓋）。規則：
+# - 硬門檻：5h 或 7d 任一達標 → stop（寫 .ai/STOP，保個人額度）
+# - 軟門檻：只看 5h（會 reset、值得等；7d 要等數天不值得）→ wait
+# - 查不到用量（空值）→ go，不誤殺
+quota_decide() {
+  local sess="${1:-}" week="${2:-}" wait_t="$3" stop_t="$4"
+  if [ -n "$sess" ] && [ "$sess" -ge "$stop_t" ] 2>/dev/null; then echo stop; return; fi
+  if [ -n "$week" ] && [ "$week" -ge "$stop_t" ] 2>/dev/null; then echo stop; return; fi
+  if [ "$wait_t" -gt 0 ] 2>/dev/null && [ -n "$sess" ] && [ "$sess" -ge "$wait_t" ] 2>/dev/null; then
+    echo wait; return
+  fi
+  echo go
+}
+
+# quota_check：查 5h/7d 用量。硬門檻寫 .ai/STOP 回傳 1；軟門檻在函式內
+# 等待（每 recheck 分鐘查一次 /usage，零額度）直到降回門檻下才回傳 0——
+# 任務只在額度足以整輪跑完時才開工，不會中途斷頭浪費重讀。
 quota_check() {
-  local thresh out result sess week reason
-  thresh=$(sched_get quota_stop_threshold_pct 80)
-  out=$( (cd "$REPO" && claude -p "/usage" --output-format json) 2>/dev/null )
-  [ -z "$out" ] && return 0
-  result=$(printf '%s' "$out" | extract_result)
-  [ -z "$result" ] && return 0
-  sess=$(parse_usage_pct "$result" session)
-  week=$(parse_usage_pct "$result" week)
-  reason=""
-  if [ -n "$sess" ] && [ "$sess" -ge "$thresh" ] 2>/dev/null; then
-    reason="5 小時額度已用 ${sess}%（門檻 ${thresh}%）"
-  fi
-  if [ -n "$week" ] && [ "$week" -ge "$thresh" ] 2>/dev/null; then
-    [ -n "$reason" ] && reason="${reason}；"
-    reason="${reason}7 天額度已用 ${week}%（門檻 ${thresh}%）"
-  fi
-  if [ -n "$reason" ]; then
-    log "quota 煞車：$reason —— 保留給個人使用"
-    printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
-      "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
-    return 1
-  fi
-  return 0
+  local stop_t wait_t recheck out result sess week verdict reason waited_min=0
+  stop_t=$(sched_get quota_stop_threshold_pct 80)
+  wait_t=$(sched_get quota_wait_threshold_pct 60)
+  recheck=$(sched_get quota_wait_recheck_minutes 20)
+  while :; do
+    out=$( (cd "$REPO" && claude -p "/usage" --output-format json) 2>/dev/null )
+    [ -z "$out" ] && return 0
+    result=$(printf '%s' "$out" | extract_result)
+    [ -z "$result" ] && return 0
+    sess=$(parse_usage_pct "$result" session)
+    week=$(parse_usage_pct "$result" week)
+    verdict=$(quota_decide "$sess" "$week" "$wait_t" "$stop_t")
+    case "$verdict" in
+      go) return 0 ;;
+      stop)
+        reason="5h 已用 ${sess:-?}%／7d 已用 ${week:-?}%（硬門檻 ${stop_t}%）"
+        log "quota 煞車：$reason —— 保留給個人使用"
+        printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
+          "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
+        return 1 ;;
+      wait)
+        if [ "$waited_min" -ge 1440 ]; then
+          log "quota 軟門檻等了 24h 仍未降（5h=${sess}%——個人使用持續占用？），寫 STOP 收工"
+          printf 'quota 軟門檻等待逾 24h（%s）\n5h 用量持續 ≥ %s%%\n' \
+            "$(date '+%Y-%m-%dT%H:%M:%S')" "$wait_t" > "$REPO/.ai/STOP"
+          return 1
+        fi
+        log "quota 軟門檻：5h 已用 ${sess}%（≥${wait_t}%），不開新任務，${recheck} 分鐘後再查（已等 ${waited_min} 分）"
+        do_sleep $((recheck * 60)); waited_min=$((waited_min + recheck))
+        [ -f "$REPO/.ai/STOP" ] && { log "等待期間發現 .ai/STOP，結束"; return 1; } ;;
+    esac
+  done
 }
 
 # ---------- self-test：零額度驗證分類器 ----------
@@ -208,6 +234,19 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   }
   tq "5h 用量"  session 6
   tq "7d 用量"  week    44
+  echo "quota 決策（quota_decide sess week wait stop）："
+  td() { # td <名稱> <sess> <week> <wait> <stop> <期望>
+    local got; got=$(quota_decide "$2" "$3" "$4" "$5")
+    if [ "$got" = "$6" ]; then pass=$((pass+1)); echo "  ok  $1 -> $got"
+    else fail=$((fail+1)); echo "  FAIL $1 -> got=$got want=$6"; fi
+  }
+  td "低用量放行"        30 40 60 80 go
+  td "5h 軟門檻等待"     65 40 60 80 wait
+  td "5h 硬門檻停止"     85 40 60 80 stop
+  td "7d 硬門檻停止"     30 85 60 80 stop
+  td "7d 不觸發軟等待"   30 70 60 80 go
+  td "軟門檻停用(0)"     70 40 0  80 go
+  td "查無用量放行"      "" "" 60 80 go
   rm -rf "$dir"
   echo "self-test: pass=$pass fail=$fail"
   [ "$fail" = 0 ]

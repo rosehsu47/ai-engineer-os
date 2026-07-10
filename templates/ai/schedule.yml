@@ -11,6 +11,12 @@ network_backoff_max_seconds: 900
 max_cost_per_run_usd: 5
 # 5h 或 7d 額度用量達此百分比即寫 .ai/STOP 煞車，保留個人額度（設 101 停用此檢查）
 quota_stop_threshold_pct: 80
+# 軟門檻：5h 用量達此百分比就「不開新任務」，每隔 recheck 分鐘查一次 /usage
+# （零額度），降回門檻下自動繼續——任務永遠在額度充足時整輪跑完，不會
+# 中途斷頭重讀。只看 5h 額度（會 reset、值得等；7d 要等數天，交給硬門檻）。
+# 軟硬門檻的差距就是「一個任務的預算」。設 0 停用。
+quota_wait_threshold_pct: 60
+quota_wait_recheck_minutes: 20
 # true = 每個 DONE_TASK 後開全新 session 獨立審查（多一次 session 成本）
 review_after_task: false
 claude_model: "sonnet"
