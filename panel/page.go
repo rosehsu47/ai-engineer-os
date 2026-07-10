@@ -6,9 +6,9 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Engineer OS — 控制台</title>
 <style>
- body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0a0f1c;color:#e2e8f0;margin:0;padding:20px;max-width:1100px;margin:auto}
+ body{font-family:-apple-system,'PingFang TC',sans-serif;background:#0a0f1c;color:#e2e8f0;margin:0 auto;padding:20px 28px;max-width:1720px}
  h1{font-size:18px} .muted{color:#64748b;font-size:12px}
- .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:14px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(480px,100%),1fr));gap:16px;margin-top:14px}
  .repo{background:#141b2d;border:1px solid #263047;border-radius:16px;padding:18px}
  .repo h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
  .name{font-weight:700;color:#f1f5f9;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
