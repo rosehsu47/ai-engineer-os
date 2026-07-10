@@ -50,8 +50,6 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function post(url, data){ const b=new URLSearchParams(data);
   const r=await fetch(url,{method:'POST',body:b}); if(!r.ok) alert(await r.text()); refresh(); }
-function answer(repo){ const t=document.getElementById('ans-'+CSS.escape(repo)).value;
-  if(t.trim()) post('/api/answer',{repo:repo,text:t}); }
 function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
 function dot(s){ if(s.stopped) return 'stopped';
   if(s.paused) return 'paused';
@@ -91,8 +89,8 @@ function card(s){
   if(s.paused){
     h+='<div class="qa"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>';
     if(s.paused_answered){ h+='<span class="muted">已有回覆，下一輪 /work 會消化並繼續。</span>'; }
-    else { h+='<textarea id="ans-'+esc(s.path)+'" placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
-      '<button class="primary" onclick="answer('+JSON.stringify(s.path)+')">送出回覆</button>'; }
+    else { h+='<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
+      '<button class="primary" data-act="answer" data-repo="'+esc(s.path)+'">送出回覆</button>'; }
     h+='</div>'; }
   if(s.dirty_count>0){
     h+='<div class="dirty">⚠ working tree 有 '+s.dirty_count+' 個未 commit 檔案 —— 未記帳的工作，'+
@@ -100,13 +98,23 @@ function card(s){
   if(s.shippable>0){
     h+='<div class="ship">🚢 ai/queue 領先 '+s.shippable+' 個 commit，可出貨：'+
        '<br><code>claude</code> 內執行 <code>/ai-ship '+esc(s.path)+'</code></div>'; }
-  if(s.stopped) h+='<button class="resumebtn" onclick="stopRepo('+JSON.stringify(s.path)+',\'resume\')">解除煞車</button>';
-  else h+='<button class="stopbtn" onclick="stopRepo('+JSON.stringify(s.path)+',\'stop\')">■ STOP 煞車</button>';
+  if(s.stopped) h+='<button class="resumebtn" data-act="resume" data-repo="'+esc(s.path)+'">解除煞車</button>';
+  else h+='<button class="stopbtn" data-act="stop" data-repo="'+esc(s.path)+'">■ STOP 煞車</button>';
   h+='</div>'; return h; }
 async function refresh(){
   try{ const r=await fetch('/api/state'); const list=await r.json();
     document.getElementById('grid').innerHTML=list.map(card).join('');
     document.getElementById('ts').textContent='更新於 '+new Date().toLocaleTimeString();
   }catch(e){ document.getElementById('ts').textContent='更新失敗：'+e; } }
+// 事件委派：按鈕的 repo 路徑放 data- 屬性（inline onclick 塞含引號的
+// 路徑字串會截斷 HTML 屬性——按鈕全滅的前科），重繪也不用重綁 handler
+document.getElementById('grid').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-act]'); if(!b) return;
+  const repo=b.dataset.repo;
+  if(b.dataset.act==='answer'){
+    const t=b.closest('.qa').querySelector('textarea').value;
+    if(t.trim()) post('/api/answer',{repo:repo,text:t});
+  } else stopRepo(repo,b.dataset.act);
+});
 refresh(); setInterval(refresh, 5000);
 </script></body></html>`
