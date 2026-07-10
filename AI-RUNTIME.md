@@ -133,10 +133,27 @@ tasks:
 - `doing.yaml`：同結構 + `started_at`。**不變量：至多 1 筆**（單 agent）。
   發現多於 1 筆＝前一輪異常中斷：把多餘的退回 backlog 再繼續。
 - `done.yaml`：同結構 + `finished_at`、`result`（done|partial|abandoned）、
-  `receipt`（收據相對路徑）。**append-only，永不改寫既有條目**。
+  `receipt`（收據相對路徑）、選填 `source`（省略 = `agent`；
+  `human-interactive` = 人類互動 session 的產出，見下節）。
+  **append-only，永不改寫既有條目**。
   `abandoned` = 任務達 max_attempts 仍失敗、或被契約終結——移進來
   而不是留在 backlog 當殭屍，/ai-report 的「待人類處理」節會列出它們。
 - YAML 一律**整檔重寫**（同 checkpoint 規則）。
+
+## 人類互動 session（source: human-interactive）
+
+不是所有工作都走 `/work` 自動迴圈——人類貼截圖、即時反饋、Claude 直接
+修改的互動協作也是合法的工作來源。規則：**同一條稽核軌道，不同的來源
+標記**。互動 session 改了 AIOS 管理的 repo 就必須在收尾時補齊：
+
+1. 程式碼 commit（訊息帶 `[T-NNN]`，任務 id 照常遞增取號）
+2. Receipt（frontmatter `source: human-interactive`；`rubric` 可為 null
+   ——互動模式沒有預定義 acceptance 可自評，但「做了什麼/證據」照寫）
+3. done.yaml 條目（`source: human-interactive`）
+
+目標 repo 裡的 `/ai-wrap` skill 把這三步收成一個指令。互動 session
+**不需要** checkpoint/AIOS_STATUS（那是無人迴圈的恢復機制）；也不受
+「不能 commit 到主分支」限制——人類在場即人類批准。
 
 ## Receipt 格式 — `receipts/YYYY-MM-DD/NNN.md`
 
@@ -148,6 +165,7 @@ receipt: "2026-07-08/001"
 task_id: T-001
 title: ""
 status: done            # done | partial | blocked | failed | paused
+source: agent           # agent | human-interactive（見下方「人類互動 session」）
 started_at: ""
 finished_at: ""
 commit: null            # 程式碼 commit 的 sha；無則 null
@@ -186,8 +204,10 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
    高風險 repo 請勿使用 `--yolo`。
 2. **LLM 寫壞 YAML/JSON 是遲早的事**：協定用「整檔重寫 + 壞檔自癒重置 +
    supervisor 檢查 checkpoint mtime 前進」三層緩解，但沒有 schema validator。
-3. **rate-limit 偵測依賴 CLI 訊息格式**（如
-   `You've hit your usage limit · resets 8pm (Asia/Taipei)`），版本間可能改變；
+3. **rate-limit 偵測依賴 CLI 訊息格式**（已知變體：
+   `You've hit your usage limit · resets 8pm (Asia/Taipei)`、
+   `You've hit your session limit · resets 6:50am (Asia/Taipei)`——
+   limit 種類與帶分鐘的時間都要能認），版本間可能改變；
    supervisor 解析失敗時退回固定睡眠，所有未知錯誤都收斂到「有界重試」。
 4. **headless 寫入權限未經真實終端驗證**（2026-07-08 建置時的實測侷限）：
    從巢狀 Claude session 呼叫 `claude -p` 時，子 session 的檔案寫入被父層

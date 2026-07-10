@@ -41,11 +41,12 @@ type RepoState struct {
 	Paused          bool     `json:"paused"`
 	PausedQuestion  string   `json:"paused_question,omitempty"`
 	PausedAnswered  bool     `json:"paused_answered"`
-	Shippable       int      `json:"shippable"` // ai/queue 領先主分支的 commit 數
+	Shippable       int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
+	DirtyCount      int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
 	LastRunStatus   string   `json:"last_run_status,omitempty"`
 	LastRunCost     string   `json:"last_run_cost,omitempty"`
 	LastRunAt       string   `json:"last_run_at,omitempty"`
-	Receipts        []string `json:"receipts"` // 最近 3 張 "日期/NNN status title"
+	Receipts        []string `json:"receipts"` // 最近 3 張 "日期/NNN [status] [human]? title"
 }
 
 func main() {
@@ -224,6 +225,12 @@ func readRepo(path string) RepoState {
 			break
 		}
 	}
+	// dirty：working tree 有未 commit 的變更 = 有工作還沒被 /ai-wrap 記帳
+	if out, err := exec.Command("git", "-C", path, "status", "--porcelain").Output(); err == nil {
+		if t := strings.TrimSpace(string(out)); t != "" {
+			s.DirtyCount = len(strings.Split(t, "\n"))
+		}
+	}
 	// receipts（最近 3）
 	s.Receipts = recentReceipts(filepath.Join(ai, "receipts"), 3)
 	return s
@@ -301,7 +308,11 @@ func recentReceipts(dir string, n int) []string {
 			return ""
 		}
 		rel := filepath.Base(filepath.Dir(f)) + "/" + strings.TrimSuffix(filepath.Base(f), ".md")
-		out = append(out, fmt.Sprintf("%s [%s] %s", rel, get("status"), get("title")))
+		human := ""
+		if get("source") == "human-interactive" {
+			human = "[human] "
+		}
+		out = append(out, fmt.Sprintf("%s [%s] %s%s", rel, get("status"), human, get("title")))
 	}
 	return out
 }

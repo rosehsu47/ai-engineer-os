@@ -41,6 +41,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .resumebtn:hover{background:#14532d26}
  code{background:#334155;padding:2px 6px;border-radius:5px;font-size:12px;user-select:all}
  .ship{background:#064e3b55;border:1px solid #10b98155;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px}
+ .dirty{background:#78350f33;border:1px solid #b4530966;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px;color:#fbbf24}
 </style></head><body>
 <h1>🤖 AI Engineer OS 控制台 <span class="muted" id="ts"></span></h1>
 <p class="muted">panel 只讀寫協定檔（回答/煞車）；出貨與 merge 永遠在你的終端機。每 5 秒自動更新。</p>
@@ -71,9 +72,10 @@ function badge(status){ const c=STATUS_COLORS[status]||['#475569','#94a3b8'];
   return '<span class="badge" style="background:'+c[0]+'33;color:'+c[1]+'">'+esc(status)+'</span>'; }
 function taskRow(cls,t){ const [id,title]=splitId(t);
   return '<div class="'+cls+'"><span class="task-id">'+esc(id)+'</span><span class="task-title">'+esc(title)+'</span></div>'; }
-function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s([\s\S]*)$/);
+function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S]*)$/);
   if(!m) return '<div class="receipt-row">'+esc(r)+'</div>';
-  return '<div class="receipt-row">'+badge(m[2])+'<span>'+esc(m[1])+' · '+esc(m[3])+'</span></div>'; }
+  const src=m[3]?'<span class="badge" style="background:#8b5cf633;color:#a78bfa">human</span>':'';
+  return '<div class="receipt-row">'+badge(m[2])+src+'<span>'+esc(m[1])+' · '+esc(m[4])+'</span></div>'; }
 function card(s){
   if(s.missing) return '<div class="repo"><h2><span class="name">'+esc(s.name)+'</span></h2><p class="muted">尚未 /ai-init</p></div>';
   let h='<div class="repo"><h2><span class="dot '+dot(s)+'"></span><span class="name">'+esc(s.name)+'</span>'+
@@ -92,6 +94,9 @@ function card(s){
     else { h+='<textarea id="ans-'+esc(s.path)+'" placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
       '<button class="primary" onclick="answer('+JSON.stringify(s.path)+')">送出回覆</button>'; }
     h+='</div>'; }
+  if(s.dirty_count>0){
+    h+='<div class="dirty">⚠ working tree 有 '+s.dirty_count+' 個未 commit 檔案 —— 未記帳的工作，'+
+       '互動 session 收尾記得跑 <code>/ai-wrap</code></div>'; }
   if(s.shippable>0){
     h+='<div class="ship">🚢 ai/queue 領先 '+s.shippable+' 個 commit，可出貨：'+
        '<br><code>claude</code> 內執行 <code>/ai-ship '+esc(s.path)+'</code></div>'; }
