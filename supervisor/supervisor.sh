@@ -203,6 +203,49 @@ quota_check() {
   done
 }
 
+# ---------- 狀態檔結構 lint（只偵測，不修復——修復永遠歸 /work 的協定自癒） ----------
+TAB_CHAR=$(printf '\t')
+
+lint_checkpoint() { # <file> → 印 ok 或壞掉原因；壞掉 return 1
+  local f="$1" first
+  [ -s "$f" ] || { echo "檔案不存在或為空"; return 1; }
+  if [ "$HAVE_JQ" = 1 ]; then
+    jq -e 'type=="object" and has("phase")' "$f" >/dev/null 2>&1 \
+      || { echo "非合法 JSON object 或缺 phase key"; return 1; }
+  else
+    first=$(tr -d '[:space:]' < "$f" | cut -c1)
+    [ "$first" = "{" ] || { echo "首字元不是 {（無 jq 淺檢查）"; return 1; }
+    grep -q '"phase"' "$f" || { echo "缺 phase key（無 jq 淺檢查）"; return 1; }
+  fi
+  echo ok
+}
+
+lint_tasks() { # <file> <backlog|doing|done> → 印 ok 或壞掉原因；壞掉 return 1
+  local f="$1" kind="$2" n bad
+  [ -f "$f" ] || { echo "檔案不存在"; return 1; }
+  grep -q '^version:' "$f" || { echo "缺 version: key"; return 1; }
+  grep -q '^tasks:' "$f"   || { echo "缺 tasks: key"; return 1; }
+  if grep -q "$TAB_CHAR" "$f"; then echo "含 tab 字元（YAML 不合法）"; return 1; fi
+  bad=$(grep -E '^[[:space:]]*- id:' "$f" | grep -cvE 'id:[[:space:]]*"?T-[0-9]+"?')
+  [ "$bad" = 0 ] || { echo "${bad} 個 id 不是 T-NNN 格式"; return 1; }
+  if [ "$kind" = doing ]; then
+    n=$(grep -cE '^[[:space:]]*- id:' "$f")
+    [ "$n" -le 1 ] || { echo "doing 有 ${n} 筆任務（不變量：至多 1）"; return 1; }
+  fi
+  echo ok
+}
+
+lint_state() { # 檢查 $REPO 的四個狀態檔；每個異常 log 一行，echo 異常數
+  local bad=0 r k
+  r=$(lint_checkpoint "$REPO/.ai/state/checkpoint.json")
+  [ "$r" = ok ] || { log "state lint: checkpoint.json — $r"; bad=$((bad+1)); }
+  for k in backlog doing done; do
+    r=$(lint_tasks "$REPO/.ai/tasks/$k.yaml" "$k")
+    [ "$r" = ok ] || { log "state lint: ${k}.yaml — $r"; bad=$((bad+1)); }
+  done
+  echo "$bad"
+}
+
 # ---------- self-test：零額度驗證分類器 ----------
 run_self_test() {
   local dir pass=0 fail=0
@@ -274,6 +317,30 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   td "7d 不觸發軟等待"   30 70 60 80 go
   td "軟門檻停用(0)"     70 40 0  80 go
   td "查無用量放行"      "" "" 60 80 go
+  echo "狀態檔 lint（lint_checkpoint / lint_tasks）："
+  tl() { # tl <名稱> <want: ok|bad> <lint 輸出>
+    local verdict=bad; [ "$3" = ok ] && verdict=ok
+    if [ "$verdict" = "$2" ]; then pass=$((pass+1)); echo "  ok  $1"
+    else fail=$((fail+1)); echo "  FAIL $1 -> want=$2 got=$3"; fi
+  }
+  printf '{"version":1,"phase":"executing","task_step":"3"}' > "$dir/ck.json"
+  tl "checkpoint 合法"        ok  "$(lint_checkpoint "$dir/ck.json")"
+  printf '{"version":1,"pha' > "$dir/ck.json"
+  tl "checkpoint 截斷 JSON"   bad "$(lint_checkpoint "$dir/ck.json")"
+  printf '[]' > "$dir/ck.json"
+  tl "checkpoint 不是 object" bad "$(lint_checkpoint "$dir/ck.json")"
+  printf 'version: 1\ntasks:\n  - id: T-001\n    title: x\n' > "$dir/t.yaml"
+  tl "backlog 合法"           ok  "$(lint_tasks "$dir/t.yaml" backlog)"
+  printf 'version: 1\ntasks: []\n' > "$dir/t.yaml"
+  tl "空佇列合法"             ok  "$(lint_tasks "$dir/t.yaml" backlog)"
+  printf 'version: 1\ntasks:\n\t- id: T-001\n' > "$dir/t.yaml"
+  tl "tab 縮排"               bad "$(lint_tasks "$dir/t.yaml" backlog)"
+  printf 'version: 1\nitems:\n' > "$dir/t.yaml"
+  tl "缺 tasks: key"          bad "$(lint_tasks "$dir/t.yaml" backlog)"
+  printf 'version: 1\ntasks:\n  - id: T-001\n  - id: T-002\n' > "$dir/t.yaml"
+  tl "doing 兩筆"             bad "$(lint_tasks "$dir/t.yaml" doing)"
+  printf 'version: 1\ntasks:\n  - id: X-01\n' > "$dir/t.yaml"
+  tl "id 非 T-NNN"            bad "$(lint_tasks "$dir/t.yaml" done)"
   rm -rf "$dir"
   echo "self-test: pass=$pass fail=$fail"
   [ "$fail" = 0 ]
@@ -328,6 +395,10 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 # ---------- 主迴圈 ----------
+# 啟動前狀態檔結構檢查（只警告不阻擋——壞檔自癒本身就是 /work 的恢復路徑）
+lint_bad=$(lint_state)
+[ "$lint_bad" = 0 ] || log "state lint：${lint_bad} 個狀態檔結構異常（見上），預期下一輪 /work 依協定自癒"
+
 iter=0 consecutive_failures=0 net_retries=0 nostatus_count=0 total_cost=0 rl_rounds=0
 log "supervisor 啟動：repo=$REPO model=$MODEL max_iter=$MAX_ITER perm=$PERM_FLAG"
 
@@ -406,6 +477,15 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
           rline=$(extract_result < "$rout" | grep -oE 'AIOS_REVIEW: (PASS|FAIL)[^"]*' | tail -1)
           log "review 結果：${rline:-（無 AIOS_REVIEW 行——檢查 /review skill 是否已安裝）} cost=\$${rcost}"
           # FAIL 時 reviewer 已把修正任務排進 backlog，下一輪 /work 自然接手
+        fi
+      fi
+      # checkpoint 結構驗證（只在有 jq 時做硬判定——無 jq 的淺檢查可能誤判，
+      # 誤判不可以計失敗殺迴圈；壞 JSON 本身下一輪 /work 會自癒）
+      if [ "$HAVE_JQ" = 1 ]; then
+        ck_reason=$(lint_checkpoint "$ckpt")
+        if [ "$ck_reason" != ok ]; then
+          consecutive_failures=$((consecutive_failures+1))
+          log "警告：回報 productive 但 checkpoint 結構壞掉（$ck_reason），計失敗 $consecutive_failures/$MAX_FAIL"
         fi
       fi
       do_sleep "$SLEEP_BETWEEN" ;;

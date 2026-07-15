@@ -153,6 +153,12 @@ tasks:
   `abandoned` = 任務達 max_attempts 仍失敗、或被契約終結——移進來
   而不是留在 backlog 當殭屍，/ai-report 的「待人類處理」節會列出它們。
 - YAML 一律**整檔重寫**（同 checkpoint 規則）。
+- **壞檔自癒（同 checkpoint 規則）**：非法 YAML 或缺 `tasks:` key →
+  先搶救可辨識的任務條目再整檔重寫；救不回 → 從模板重置為空佇列並在
+  memory.md 記一筆。**例外：`done.yaml` 是 append-only 稽核檔**——
+  救不回時先改名 `done.yaml.corrupt-<日期>` 保留原檔再開新檔，
+  絕不靜默清空。supervisor 每次啟動會對四個狀態檔做結構 lint
+  （只偵測、寫進 run.log；修復永遠歸 /work 的自癒協定）。
 
 ## 人類互動 session（source: human-interactive）
 
@@ -216,8 +222,13 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
    （由 /ai-init 安裝，擋 `.claude/**` 與 `.ai/CONTRACT.md` 的編輯與
    白名單外的 Bash）。deny 規則的具體行為隨 Claude Code 版本演進，
    高風險 repo 請勿使用 `--yolo`。
-2. **LLM 寫壞 YAML/JSON 是遲早的事**：協定用「整檔重寫 + 壞檔自癒重置 +
-   supervisor 檢查 checkpoint mtime 前進」三層緩解，但沒有 schema validator。
+2. **LLM 寫壞 YAML/JSON 是遲早的事**：緩解有四層——整檔重寫、壞檔
+   自癒重置（`done.yaml` 例外：改名保留不清空）、supervisor 檢查
+   checkpoint mtime 前進、supervisor 的結構 lint（啟動時全檢並警告；
+   有 jq 時 productive 輪寫壞 checkpoint 會計一次失敗）。lint 是結構
+   檢查（合法 JSON／必要 key／無 tab／id 格式／doing ≤1），不是完整
+   schema validator——語意層的錯（欄位值錯、跨檔 id 重複）靠 receipts
+   與 review 輪把關。
 3. **rate-limit 偵測依賴 CLI 訊息格式**（已認得的變體：
    `You've hit your usage/session/weekly limit · resets [at] 8pm/6:50am`、
    headless 的 `Claude AI usage limit reached|<unix epoch>`（epoch 形

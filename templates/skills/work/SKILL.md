@@ -47,7 +47,10 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
 ### 步驟 1：載入狀態
 讀 `.ai/CONTRACT.md`、`.ai/state/checkpoint.json`、`.ai/state/context.md`。
 checkpoint 不是合法 JSON → 用 schema 預設值重置它、在 memory.md 記一筆
-「checkpoint 損壞已重置」、繼續。
+「checkpoint 損壞已重置」、繼續。tasks/*.yaml 壞掉同理：先搶救可辨識的
+任務條目再整檔重寫，救不回就從模板重置為空佇列＋memory.md 記一筆；
+**唯獨 `done.yaml`（append-only 稽核檔）救不回時要先改名
+`done.yaml.corrupt-<日期>` 保留原檔再開新檔，絕不靜默清空**。
 
 ### 步驟 2：續作或選任務
 - `doing.yaml` 有任務，或 checkpoint `phase != idle` 且有 `current_task_id`
