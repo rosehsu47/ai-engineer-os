@@ -5,6 +5,9 @@
 //       PAUSED、last_run、receipts frontmatter、ai/queue 領先數
 //   寫：只寫兩種協定檔——PAUSED 的「## 人類回覆」節、.ai/STOP 的建立/刪除
 //   出貨（push）是對外動作，panel 只顯示可出貨數量與 /ai-ship 指令。
+//   唯一例外：claude 帳號用量（/api/usage）——帳號層級、不是協定檔，
+//   查一次要 spawn `claude -p "/usage"`（非零成本，~0.5s），所以刻意
+//   跟 5 秒的 state 輪詢分開：60 秒快取一次，且只查一次（不分 repo）。
 //
 // 用法：
 //   go run ./panel -repos /path/a,/path/b        （或編譯後 aios-panel）
@@ -19,8 +22,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -75,6 +80,10 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(states)
+	})
+	http.HandleFunc("/api/usage", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(getUsage(repos))
 	})
 	http.HandleFunc("/api/answer", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -204,9 +213,6 @@ func readRepo(path string) RepoState {
 		if i := strings.Index(content, "## 人類回覆"); i >= 0 {
 			q = content[:i]
 		}
-		if len(q) > 400 {
-			q = q[:400] + "…"
-		}
 		s.PausedQuestion = strings.TrimSpace(q)
 	}
 	// last_run
@@ -234,6 +240,82 @@ func readRepo(path string) RepoState {
 	// receipts（最近 3）
 	s.Receipts = recentReceipts(filepath.Join(ai, "receipts"), 3)
 	return s
+}
+
+// ---------- claude 帳號用量（帳號層級，跟哪個 repo 無關；60 秒快取） ----------
+
+type UsageState struct {
+	SessionPct int    `json:"session_pct"` // -1 = 未知
+	WeekPct    int    `json:"week_pct"`
+	FetchedAt  string `json:"fetched_at,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+var (
+	usageMu    sync.Mutex
+	usageCache UsageState
+	usageAt    time.Time
+)
+
+var usagePctRe = regexp.MustCompile(`[0-9]+%`)
+
+func parseUsagePct(text, label string) int {
+	prefix := "Current session"
+	if label == "week" {
+		prefix = "Current week"
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, prefix) {
+			m := usagePctRe.FindString(line)
+			if m == "" {
+				return -1
+			}
+			n, err := strconv.Atoi(strings.TrimSuffix(m, "%"))
+			if err != nil {
+				return -1
+			}
+			return n
+		}
+	}
+	return -1
+}
+
+// fetchUsage 執行一次 `claude -p "/usage"`（cwd 隨便挑一個已註冊的 repo，
+// 用量是帳號層級、跟 cwd 無關，只是需要在某個目錄下跑）。
+func fetchUsage(repos []string) UsageState {
+	if len(repos) == 0 {
+		return UsageState{SessionPct: -1, WeekPct: -1, Error: "沒有已註冊的 repo"}
+	}
+	cmd := exec.Command("claude", "-p", "/usage", "--output-format", "json")
+	cmd.Dir = repos[0]
+	out, err := cmd.Output()
+	if err != nil {
+		return UsageState{SessionPct: -1, WeekPct: -1, Error: "claude -p /usage 執行失敗"}
+	}
+	var m map[string]any
+	if json.Unmarshal(out, &m) != nil {
+		return UsageState{SessionPct: -1, WeekPct: -1, Error: "無法解析 claude 輸出"}
+	}
+	result, _ := m["result"].(string)
+	if result == "" {
+		return UsageState{SessionPct: -1, WeekPct: -1, Error: "claude 輸出沒有 result 欄位"}
+	}
+	return UsageState{
+		SessionPct: parseUsagePct(result, "session"),
+		WeekPct:    parseUsagePct(result, "week"),
+		FetchedAt:  time.Now().Format("15:04:05"),
+	}
+}
+
+func getUsage(repos []string) UsageState {
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	if time.Since(usageAt) < 60*time.Second && usageAt != (time.Time{}) {
+		return usageCache
+	}
+	usageCache = fetchUsage(repos)
+	usageAt = time.Now()
+	return usageCache
 }
 
 func readJSON(p string) map[string]any {
