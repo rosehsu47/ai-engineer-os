@@ -310,10 +310,13 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   iter=$((iter+1))
 
   if [ -f "$REPO/.ai/STOP" ]; then log "發現 .ai/STOP，結束"; exit 0; fi
-  if [ -f "$REPO/.ai/PAUSED" ]; then
+  if [ -f "$REPO/.ai/PAUSED" ] && ! grep -q '^## 人類回覆' "$REPO/.ai/PAUSED" 2>/dev/null; then
     log "等待人類：$(head -3 "$REPO/.ai/PAUSED" 2>/dev/null)"
     if [ "$WAIT_ON_PAUSE" = 1 ]; then do_sleep 300; iter=$((iter-1)); continue; fi
     exit 2
+  fi
+  if [ -f "$REPO/.ai/PAUSED" ]; then
+    log "PAUSED 已有人類回覆，跑一輪 /work 讓它消化並清旗"
   fi
   quota_check || exit 0
 
