@@ -1,11 +1,14 @@
 # AI Engineer OS
 
-A generic autonomous Claude Code agent runtime: install a protocol + skill
-set into any target repo, then run it unattended via a supervisor loop with
-persistent memory, checkpoint/resume, self-evaluation, audited receipts, a
-local web control panel, and crash/rate-limit recovery. **Operator's manual
+**The persistent operating layer for coding agents.** Agent state belongs
+in the repository, not in the conversation: install a file protocol + skill
+set into any target repo, and the repo itself carries the contract, task
+queue, memory, checkpoints, and audited receipts an agent needs to work
+unattended — plus a supervisor loop for crash/rate-limit recovery, quota
+braking, a local web control panel, and a kill switch. **Operator's manual
 with flow diagrams: [`MANUAL.md`](MANUAL.md)**; protocol spec:
-[`AI-RUNTIME.md`](AI-RUNTIME.md).
+[`AI-RUNTIME.md`](AI-RUNTIME.md); vision audit and next phase:
+[`ROADMAP.md`](ROADMAP.md).
 
 ```bash
 # 1. Install the runtime into a target repo (interview fills the CONTRACT)
@@ -25,15 +28,53 @@ touch /path/to/repo/.ai/STOP     # brake at any time
 Receipts are structured enough to feed downstream reporting/résumé tooling
 if you build one, but that's outside this repo's scope.
 
-## Positioning: a protocol layer, not an agent runtime
+## Positioning: a repository-first persistent operating layer
 
-This project does **not** implement an agent loop, tool execution, or model
-routing — all of that is delegated to Claude Code (`claude -p "/work"`).
-What it implements is the layer Claude Code doesn't give you: **how a
-subscription-billed CLI agent becomes an accountable, resumable, resident
-engineer inside a specific repo.** Everything lives in files under `.ai/`;
-an agent session is stateless and disposable, so crash / rate-limit /
-kill-switch recovery is the same code path as a normal start.
+Most coding-agent setups keep the working state in the conversation: what's
+done, why it changed, where to resume, why it stopped. When the chat ends,
+the agent forgets. This project moves that state into the repository —
+**the conversation is just UI; the repository is the state** — so an agent
+session is stateless and disposable, and crash / rate-limit / kill-switch
+recovery is the same code path as a normal start.
+
+It is **not** an agent framework, workflow engine, planner, or tool-calling
+layer — it never decides how the agent thinks (today all of that is
+delegated to Claude Code via `claude -p "/work"`). What it maintains is the
+working environment every agent run shares, all as files under `.ai/`:
+
+```
+         Loop engine（supervisor / cron / CI —— replaceable）
+                          │
+                          ▼
+              ┌──────────────────────────┐
+              │      AI Engineer OS      │
+              ├──────────────────────────┤
+              │  Contract      State     │  data plane —
+              │  Memory        Tasks     │  what the agent
+              │  Context       Receipts  │  reads and writes
+              ├──────────────────────────┤
+              │  Control（human）        │  control plane —
+              │   STOP · PAUSED          │  authority the human keeps,
+              │   schedule / budget      │  deny-listed from the agent
+              └──────────────────────────┘
+                          │
+                          ▼
+                   Git repository
+```
+
+The **data plane** is the agent's working environment: contract (rules,
+boundaries, definition of done), execution state (checkpoint / resume),
+long-term memory and decisions, the task queue, project context, and
+receipts (evidence for every change). The **control plane** is the
+authority the human keeps: `STOP` (a kill switch any loop must respect),
+`PAUSED` (the approval-boundary round-trip), and `schedule.yml` (budget,
+quota thresholds, start times — deny-listed so the agent cannot reschedule
+or re-budget itself).
+
+Quota braking shows how the layers split: the OS defines the *vocabulary*
+(a STOP flag, threshold keys, `quota_wait`/`quota_stop` events) and the
+loop implements the *policy* (wait out the 5h window, stop on the 7d
+window). Swap the loop; the vocabulary still holds.
 
 The durable assets, in order of value:
 
@@ -47,13 +88,31 @@ The durable assets, in order of value:
    descriptions (`/ai-ship`), reports/changelogs/résumé material
    (`/ai-report`), and independent review rounds. The agent's work is only
    as real as its evidence.
-3. **Subscription-quota awareness** — dual-threshold braking (soft: wait
-   for the 5h window to reset; hard: stop to preserve the human's weekly
-   quota). Token-billed frameworks don't have this problem; subscription
-   CLI users do, and no framework we know of handles it.
+3. **Control-plane vocabulary** — STOP / PAUSED / schedule, including
+   subscription-quota braking (soft: wait for the 5h window to reset;
+   hard: stop to preserve the human's weekly quota). Token-billed
+   frameworks don't have this problem; subscription CLI users do, and no
+   framework we know of handles it.
 4. **Single-writer file state** — one agent writes `.ai/` at a time. This
    is what makes checkpoint/resume trustworthy, and it's why parallel
    multi-agent writers are deliberately not built (see below).
+
+### What's replaceable
+
+- **Agent** — designed so any coding agent (Claude Code, Codex, Cursor,
+  Gemini CLI, whatever comes next) can pick up the same `.ai/` workspace.
+  **Honest status: a design goal, not yet a verified claim.** The protocol
+  assumes nothing Claude-specific except the skill-loading mechanism, but
+  no second agent has driven it yet — see the minimum agent contract in
+  [`AI-RUNTIME.md`](AI-RUNTIME.md) and the Codex conformance milestone in
+  [`ROADMAP.md`](ROADMAP.md) (V1).
+- **Loop** — turn-based today (`supervisor.sh`); goal-based, time-based,
+  or CI-triggered loops can drive the same files.
+- **Scheduler** — launchd today (`schedule-install.sh`); cron, GitHub
+  Actions, or Claude Code's native scheduled routines would do equally.
+- **Storage is deliberately *not* on this list** — plain files in git are
+  an architectural choice, not a limitation awaiting a database: diffable,
+  auditable, portable, and readable by any agent without a driver.
 
 ### vs. general agent frameworks (e.g. Nous Research's [hermes-agent](https://github.com/nousresearch/hermes-agent))
 

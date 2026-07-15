@@ -241,6 +241,31 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
   `chore(ai): records for T-NNN`
 - 禁止 force push、禁止 commit 到主分支
 
+## 最小 agent 契約（AIOS conformance）
+
+任何 coding agent（不限 Claude Code）要接手一份 `.ai/` workspace，必須
+做到以下六件事。這既是 agent-agnostic 的規格，也是 ROADMAP V1（第二
+agent 實測）的檢核表：
+
+1. **讀 CONTRACT.md 並遵守核可邊界**：觸發 §7 任一項 → 寫 `.ai/PAUSED`
+   （具體問題＋建議選項）並停下，不得自行越權
+2. **尊重控制面**：`.ai/STOP` 存在即退出；PAUSED 未有人類回覆不開工；
+   永不修改 CONTRACT.md、schedule.yml、`.claude/**`（deny 名單保護的
+   人類控制權）
+3. **狀態檔整檔重寫**：checkpoint.json 與 tasks/*.yaml 不做局部修補；
+   時間戳一律取自 `date` 指令；壞檔依自癒規則處理（done.yaml 救不回
+   改名保留，絕不清空）
+4. **每輪結尾印 `AIOS_STATUS` 行**（狀態列表見上）——這是 loop 層
+   分類與復原的唯一可靠信號
+5. **每個任務收尾寫 receipt ＋ done.yaml append**：證據紀律——沒有
+   證據支撐的宣稱不得寫進 receipt
+6. **git 紀律**：工作在 `ai/queue` 分支、雙 commit 慣例（程式碼與
+   記帳分開）、永不 push——對外動作只有人類觸發的 /ai-ship
+
+目前唯一的 Claude Code 耦合是 **skill 載入方式**（`.claude/skills/`）：
+其他 agent 需要用自己的機制把 /work 的演算法餵進 session（system
+prompt、AGENTS.md 等）。協定本身只認檔案與上述行為，不認特定 runtime。
+
 ## 已知限制（誠實條款）
 
 1. **檔案禁令的強制力**：CONTRACT 的禁止事項對 agent 是指令不是沙箱。

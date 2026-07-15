@@ -65,9 +65,10 @@
   receipt → done.yaml → 印 AIOS_STATUS），**先後接手、不是平行**
   （single-writer 不動）。這是「agent-agnostic」從設計目標升級為
   已驗證主張的門檻；在此之前對外措辭一律是「協定除 skill 格式外
-  不假設 Claude 專屬功能」。預期產出：一份差距清單（哪些東西其實
-  是 Claude 耦合：skill 載入方式、權限模型、/usage 解析）＋
-  AI-RUNTIME 的「最小 agent 契約」一節。
+  不假設 Claude 專屬功能」。AI-RUNTIME 的「最小 agent 契約」節已先
+  以規格形式寫出（六條 conformance 檢核）；Codex 實測後回填差距
+  清單（哪些東西其實是 Claude 耦合：skill 載入方式、權限模型、
+  /usage 解析）。
 
 **D — 排程與觀測**
 - **D1 `supervisor/schedule-install.sh`**：launchd 產生器，讀
