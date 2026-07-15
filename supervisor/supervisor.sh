@@ -139,12 +139,12 @@ parse_usage_pct() {
 
 # quota_decide <sess%> <week%> <wait門檻> <stop門檻> → stop|wait|go
 # 純函式（self-test 直接覆蓋）。規則：
-# - 硬門檻：5h 或 7d 任一達標 → stop（寫 .ai/STOP，保個人額度）
-# - 軟門檻：只看 5h（會 reset、值得等；7d 要等數天不值得）→ wait
+# - 硬門檻：只看 7d → stop（寫 .ai/STOP，保個人額度；7d 要等數天不值得等）
+# - 軟門檻：只看 5h，門檻以上（含 100%）一律 wait，不 stop——
+#   5h 會 reset，值得等，等到降回門檻下才繼續（wait 迴圈另有 24h 逾時保險）
 # - 查不到用量（空值）→ go，不誤殺
 quota_decide() {
   local sess="${1:-}" week="${2:-}" wait_t="$3" stop_t="$4"
-  if [ -n "$sess" ] && [ "$sess" -ge "$stop_t" ] 2>/dev/null; then echo stop; return; fi
   if [ -n "$week" ] && [ "$week" -ge "$stop_t" ] 2>/dev/null; then echo stop; return; fi
   if [ "$wait_t" -gt 0 ] 2>/dev/null && [ -n "$sess" ] && [ "$sess" -ge "$wait_t" ] 2>/dev/null; then
     echo wait; return
@@ -152,9 +152,10 @@ quota_decide() {
   echo go
 }
 
-# quota_check：查 5h/7d 用量。硬門檻寫 .ai/STOP 回傳 1；軟門檻在函式內
-# 等待（每 recheck 分鐘查一次 /usage，零額度）直到降回門檻下才回傳 0——
-# 任務只在額度足以整輪跑完時才開工，不會中途斷頭浪費重讀。
+# quota_check：查 5h/7d 用量。7d 硬門檻寫 .ai/STOP 回傳 1；5h 達軟門檻
+#（含超過硬門檻、100%）在函式內等待（每 recheck 分鐘查一次 /usage，
+# 零額度）直到降回門檻下才回傳 0——任務只在額度足以整輪跑完時才開工，
+# 不會中途斷頭浪費重讀。
 quota_check() {
   local stop_t wait_t recheck out result sess week verdict reason waited_min=0
   stop_t=$(sched_get quota_stop_threshold_pct 80)
@@ -171,7 +172,7 @@ quota_check() {
     case "$verdict" in
       go) return 0 ;;
       stop)
-        reason="5h 已用 ${sess:-?}%／7d 已用 ${week:-?}%（硬門檻 ${stop_t}%）"
+        reason="7d 已用 ${week:-?}%（硬門檻 ${stop_t}%，5h 已用 ${sess:-?}%）"
         log "quota 煞車：$reason —— 保留給個人使用"
         printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
           "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
@@ -242,7 +243,8 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   }
   td "低用量放行"        30 40 60 80 go
   td "5h 軟門檻等待"     65 40 60 80 wait
-  td "5h 硬門檻停止"     85 40 60 80 stop
+  td "5h 超硬門檻仍等待" 85 40 60 80 wait
+  td "5h 100% 仍等待"    100 40 60 80 wait
   td "7d 硬門檻停止"     30 85 60 80 stop
   td "7d 不觸發軟等待"   30 70 60 80 go
   td "軟門檻停用(0)"     70 40 0  80 go
