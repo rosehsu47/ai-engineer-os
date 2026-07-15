@@ -1,5 +1,5 @@
 {
-  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的白名單：Edit/Write 需明確允許（實測 headless -p 下 acceptEdits 不足以放行），Bash 逐指令白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線（優先權高於 allow）：契約與權限設定本身不可被 agent 修改。",
+  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的白名單：Edit/Write 需明確允許（實測 headless -p 下 acceptEdits 不足以放行），Bash 逐指令白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線（優先權高於 allow，且無法用更具體的 allow 開例外）：契約與權限設定本身不可被 agent 修改。`mv .ai/PAUSED .ai/PAUSED.consumed` 是精確全字串比對的窄放行——/work 協定要求消化完人類回覆後清掉 PAUSED 旗標，但 rm 被硬 deny 擋死，改用不在 deny 名單裡的 mv 繞開，範圍精確到這一個指令，不開放其他 mv 用法。",
   "permissions": {
     "allow": [
       "Edit(**)",
@@ -17,6 +17,7 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(mkdir:*)",
+      "Bash(mv .ai/PAUSED .ai/PAUSED.consumed)",
       "Bash({{TEST_COMMAND}}:*)",
       "Bash({{BUILD_COMMAND}}:*)"
     ],
