@@ -59,6 +59,16 @@
 - **C4 allowlist 補洞**：`Bash(date:*)`（時間戳協定強制要求）、
   `Bash(git show:*)`（`/review` 需要讀歷史 diff）。
 
+**V — 定位驗證**
+- **V1 第二 agent 相容性驗證（Codex CLI）**：讓 Codex 接手一份既有的
+  `.ai/` workspace 完成一個任務循環（讀 CONTRACT → 選任務 → 實作 →
+  receipt → done.yaml → 印 AIOS_STATUS），**先後接手、不是平行**
+  （single-writer 不動）。這是「agent-agnostic」從設計目標升級為
+  已驗證主張的門檻；在此之前對外措辭一律是「協定除 skill 格式外
+  不假設 Claude 專屬功能」。預期產出：一份差距清單（哪些東西其實
+  是 Claude 耦合：skill 載入方式、權限模型、/usage 解析）＋
+  AI-RUNTIME 的「最小 agent 契約」一節。
+
 **D — 排程與觀測**
 - **D1 `supervisor/schedule-install.sh`**：launchd 產生器，讀
   `schedule.yml` 新 key `schedule_start_times`，讓 schedule.yml 名實
