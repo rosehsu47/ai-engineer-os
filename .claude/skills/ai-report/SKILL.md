@@ -16,7 +16,7 @@ description: 把目標 repo 的 .ai/receipts 彙整成日報/週報（含 PR 描
 
 ## 輸出：`{repo}/.ai/reports/{daily-YYYY-MM-DD | weekly-YYYY-Www | range-...}.md`
 
-依序包含五節：
+依序包含六節：
 
 1. **完成任務總覽**——表格，直接來自 frontmatter：
    `| 任務 | 標題 | 狀態 | 分數 | commit | 收據 |`
@@ -31,6 +31,12 @@ description: 把目標 repo 的 .ai/receipts 彙整成日報/週報（含 PR 描
      （Evidence 欄必附收據路徑）
    - Key Numbers：`| Metric | Value | 來源收據 |`
      （只收有量測證據的數字；沒有就明寫「本期無可引用數字」）
+6. **運行事件摘要**——來源 `{repo}/.ai/supervisor/events.jsonl`
+   （loop 層事件，schema 見 AI-RUNTIME.md 事件模型；**檔案不存在就
+   整節略過**，不要編造）。只做區間內的計數與加總：迭代輪數、
+   rate-limit 睡眠次數、quota 煞車/等待次數、watchdog kill 與 crash
+   輪數、每日成本合計。這節是運行遙測，**不進成就敘述**——
+   成就相關各節（1-5）的唯一事實來源仍是 receipts
 
 ## 規則
 - 一個任務多張收據（失敗後重試）→ 以最後一張為準，前面的列為歷程

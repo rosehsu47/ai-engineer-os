@@ -65,6 +65,17 @@ git_rows=$(
   done
 )
 
+# supervisor 事件（loop 層遙測，events.jsonl 最近 10 行；檔案不存在則空）
+event_rows=$(
+  tail -10 "$REPO/.ai/supervisor/events.jsonl" 2>/dev/null | while read -r line; do
+    jline() { printf '%s' "$line" | grep -oE "\"$1\":\"[^\"]*\"" | head -1 | sed -E 's/^"[^"]+":"//; s/"$//'; }
+    at=$(jline at); ev=$(jline event); detail=$(jline detail)
+    it=$(printf '%s' "$line" | grep -oE '"iter":[0-9]+' | grep -oE '[0-9]+')
+    printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' \
+      "$(printf '%s' "$at" | esc)" "$(printf '%s' "$ev" | esc)" "${it:-—}" "$(printf '%s' "$detail" | esc)"
+  done
+)
+
 # done 任務表
 done_rows=$(
   awk '/^  - id:/{id=$3} /^    title:/{sub(/^    title:[ ]*/,""); t=$0} /^    result:/{r=$2}
@@ -106,6 +117,9 @@ ${done_rows:-<tr><td colspan=4 class=muted>還沒有完成的任務</td></tr>}</
 <h2>🌿 Git 事件（ai/queue 最近 12 個 commit）</h2>
 <table><tr><th>sha</th><th>訊息</th></tr>
 ${git_rows:-<tr><td colspan=2 class=muted>ai/queue 分支尚無 commit</td></tr>}</table>
+<h2>⚙️ Supervisor 事件（events.jsonl 最近 10）</h2>
+<table><tr><th>時間</th><th>事件</th><th>輪</th><th>細節</th></tr>
+${event_rows:-<tr><td colspan=4 class=muted>還沒有 loop 事件</td></tr>}</table>
 </body></html>
 HTML
 echo "dashboard: $OUT"

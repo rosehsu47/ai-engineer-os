@@ -77,6 +77,21 @@ extract_is_error() {
   else grep -q '"is_error"[[:space:]]*:[[:space:]]*true' && echo true || echo false; fi
 }
 
+# ---------- loop 層事件（機械發出 → .ai/supervisor/events.jsonl；LLM 不參與） ----------
+# 事件 schema 見 AI-RUNTIME.md「事件模型」。值一律消毒（有損 by design，原文在 run.log）。
+emit_event() { # emit_event <event> [detail]；iter/class/status_tok/task_tok/cost 取當前迴圈變數
+  [ -n "${SUP_DIR:-}" ] || return 0
+  local ev="$1" detail san_d san_s san_t
+  detail="${2:-}"
+  san_d=$(printf '%s' "$detail" | tr -d '"\\' | tr '\n\t' '  ' | cut -c1-200)
+  san_s=$(printf '%s' "${status_tok:-}" | tr -cd 'A-Z_')
+  san_t=$(printf '%s' "${task_tok:-none}" | tr -cd 'A-Za-z0-9_.-' | cut -c1-32)
+  printf '{"at":"%s","event":"%s","iter":%s,"class":"%s","status":"%s","task":"%s","cost_usd":%s,"detail":"%s"}\n' \
+    "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$ev" "${iter:-0}" "${class:-}" "$san_s" "${san_t:-none}" "${cost:-0}" "$san_d" \
+    >> "$SUP_DIR/events.jsonl"
+  return 0
+}
+
 # ---------- 錯誤分類（由上而下，首個命中） ----------
 # classify <exit_code> <combined_output_file> → 印出類別字串
 classify() {
@@ -193,15 +208,18 @@ quota_check() {
         log "quota 煞車：$reason —— 保留給個人使用"
         printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
           "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
+        END_REASON=quota_stop; emit_event quota_stop "$reason"
         return 1 ;;
       wait)
         if [ "$waited_min" -ge 1440 ]; then
           log "quota 軟門檻等了 24h 仍未降（5h=${sess}%——個人使用持續占用？），寫 STOP 收工"
           printf 'quota 軟門檻等待逾 24h（%s）\n5h 用量持續 ≥ %s%%\n' \
             "$(date '+%Y-%m-%dT%H:%M:%S')" "$wait_t" > "$REPO/.ai/STOP"
+          END_REASON=quota_wait_timeout; emit_event quota_stop "軟門檻等待逾 24h（5h=${sess}%）"
           return 1
         fi
         log "quota 軟門檻：5h 已用 ${sess}%（≥${wait_t}%），不開新任務，${recheck} 分鐘後再查（已等 ${waited_min} 分）"
+        emit_event quota_wait "5h=${sess}% >= ${wait_t}%，已等 ${waited_min} 分"
         do_sleep $((recheck * 60)); waited_min=$((waited_min + recheck))
         [ -f "$REPO/.ai/STOP" ] && { log "等待期間發現 .ai/STOP，結束"; return 1; } ;;
     esac
@@ -401,6 +419,9 @@ run_doctor() {
       d_info "殘留 lock（pid ${lpid:-?} 已死）——下次啟動會自動清掉"
     fi
   fi
+  if [ -f "$SUP_DIR/events.jsonl" ] && [ "$(stat -f %z "$SUP_DIR/events.jsonl" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    d_info "events.jsonl 超過 1MB——非稽核檔，直接 truncate 或刪掉即可"
+  fi
   [ "$YOLO" = 1 ] && d_info "注意：--yolo 會跳過上面驗證的所有權限防線"
   # probe（可選，花錢）
   [ "$PROBE" = 1 ] && run_probe
@@ -524,6 +545,23 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   tl "allow-drift 跳過 {{ 佔位" ok "$([ "$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" = 'Bash(date:*)' ] && echo ok || echo bad)"
   cp "$dir/tpl.json" "$dir/tgt.json"
   tl "drift 無漂移"           ok "$([ -z "$(doctor_perm_drift deny "$dir/tpl.json" "$dir/tgt.json")$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" ] && echo ok || echo bad)"
+  echo "emit_event（JSON 逃逸與欄位消毒）："
+  SUP_DIR="$dir"; iter=7; class=productive; status_tok=DONE_TASK; task_tok='T-001"x'; cost=0.12
+  emit_event iteration "detail 帶 \"引號\"、反斜線 \\ 與
+換行還有	tab"
+  emit_event quota_wait "5h=65% >= 60%"
+  SUP_DIR=""
+  ev_ok=1
+  [ "$(wc -l < "$dir/events.jsonl" | tr -d ' ')" = 2 ] || ev_ok=0
+  if [ "$HAVE_JQ" = 1 ]; then
+    jq -e . "$dir/events.jsonl" >/dev/null 2>&1 || ev_ok=0
+    [ "$(jq -r 'select(.event=="iteration").task' "$dir/events.jsonl")" = "T-001x" ] || ev_ok=0
+    [ "$(jq -r 'select(.event=="iteration").cost_usd' "$dir/events.jsonl")" = "0.12" ] || ev_ok=0
+  else
+    grep -q '"event":"iteration"' "$dir/events.jsonl" || ev_ok=0
+    grep -q '"task":"T-001x"' "$dir/events.jsonl" || ev_ok=0
+  fi
+  tl "兩行事件、值已消毒、合法 JSON" ok "$([ "$ev_ok" = 1 ] && echo ok || echo bad)"
   rm -rf "$dir"
   echo "self-test: pass=$pass fail=$fail"
   [ "$fail" = 0 ]
@@ -587,16 +625,21 @@ lint_bad=$(lint_state)
 [ "$lint_bad" = 0 ] || log "state lint：${lint_bad} 個狀態檔結構異常（見上），預期下一輪 /work 依協定自癒"
 
 iter=0 consecutive_failures=0 net_retries=0 nostatus_count=0 total_cost=0 rl_rounds=0
+class="" status_tok="" task_tok="" cost=0 END_REASON=""
+# run_end 掛在 EXIT trap：不管從哪個出口離開都會記一筆（原因在 END_REASON）
+trap 'rm -f "$LOCK"; emit_event run_end "reason=${END_REASON:-exit} total_cost=${total_cost:-0}"' EXIT
 log "supervisor 啟動：repo=$REPO model=$MODEL max_iter=$MAX_ITER perm=$PERM_FLAG"
+emit_event run_start "model=$MODEL max_iter=$MAX_ITER"
 
 while [ "$iter" -lt "$MAX_ITER" ]; do
   iter=$((iter+1))
+  class="" status_tok="" task_tok="" cost=0   # 不讓事件帶到上一輪的殘值
 
-  if [ -f "$REPO/.ai/STOP" ]; then log "發現 .ai/STOP，結束"; exit 0; fi
+  if [ -f "$REPO/.ai/STOP" ]; then log "發現 .ai/STOP，結束"; END_REASON=stop_flag; exit 0; fi
   if [ -f "$REPO/.ai/PAUSED" ] && ! grep -q '^## 人類回覆' "$REPO/.ai/PAUSED" 2>/dev/null; then
     log "等待人類：$(head -3 "$REPO/.ai/PAUSED" 2>/dev/null)"
     if [ "$WAIT_ON_PAUSE" = 1 ]; then do_sleep 300; iter=$((iter-1)); continue; fi
-    exit 2
+    END_REASON=paused; exit 2
   fi
   if [ -f "$REPO/.ai/PAUSED" ]; then
     log "PAUSED 已有人類回覆，跑一輪 /work 讓它消化並清旗"
@@ -617,6 +660,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   while kill -0 "$cpid" 2>/dev/null; do
     if [ "$(date +%s)" -gt "$deadline" ]; then
       log "watchdog：超過 ${TIMEOUT_MIN} 分鐘，砍掉 pid $cpid"
+      emit_event watchdog_kill "超過 ${TIMEOUT_MIN} 分鐘"
       kill -TERM "$cpid" 2>/dev/null; sleep 5; kill -KILL "$cpid" 2>/dev/null
       break
     fi
@@ -628,23 +672,28 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   cost=$(extract_cost < "$out")
   total_cost=$(awk -v a="$total_cost" -v b="$cost" 'BEGIN{printf "%.4f", a+b}')
   class=$(classify "$ec" "$combined")
+  status_tok=$(grep -oE 'AIOS_STATUS: [A-Z_]+' "$combined" | tail -1 | awk '{print $2}')
+  task_tok=$(grep -oE 'task=[^ ]+' "$combined" | tail -1 | cut -d= -f2)
   # 「連續」網路失敗計數：只要這輪不是網路錯誤就歸零
   [ "$class" != "network" ] && net_retries=0
   [ "$class" != "rate_limit" ] && rl_rounds=0
   log "iteration ${iter}：class=$class exit=$ec cost=\$${cost} total=\$${total_cost}"
   printf '{"iteration":%s,"last_status":"%s","consecutive_failures":%s,"total_cost_usd":%s,"at":"%s"}\n' \
     "$iter" "$class" "$consecutive_failures" "$total_cost" "$(date '+%Y-%m-%dT%H:%M:%S')" > "$SUP_DIR/last_run.json"
+  emit_event iteration
 
   # 成本熔斷
   if awk -v t="$total_cost" -v m="$MAX_COST" 'BEGIN{exit !(t>m)}'; then
-    log "成本熔斷：\$${total_cost} > \$${MAX_COST}，停止"; exit 3
+    log "成本熔斷：\$${total_cost} > \$${MAX_COST}，停止"
+    END_REASON=cost_breaker; emit_event cost_breaker "total=${total_cost} > max=${MAX_COST}"
+    exit 3
   fi
 
   case "$class" in
-    stopped)     log "agent 回報 STOPPED"; exit 0 ;;
+    stopped)     log "agent 回報 STOPPED"; END_REASON=stopped; exit 0 ;;
     paused)      log "agent 需要人類：$(head -3 "$REPO/.ai/PAUSED" 2>/dev/null || echo '(見 receipts)')"
-                 [ "$WAIT_ON_PAUSE" = 1 ] && { do_sleep 300; continue; } || exit 2 ;;
-    queue_empty) log "佇列空，正常收工"; exit 0 ;;
+                 [ "$WAIT_ON_PAUSE" = 1 ] && { do_sleep 300; continue; } || { END_REASON=paused; exit 2; } ;;
+    queue_empty) log "佇列空，正常收工"; END_REASON=queue_empty; exit 0 ;;
     productive)
       # 交叉驗證：agent 說有進展，checkpoint 就該被動過
       mtime_after=$(stat -f %m "$ckpt" 2>/dev/null || echo 0)
@@ -654,7 +703,6 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
       else
         consecutive_failures=0 net_retries=0
         # 多 agent 審查輪：DONE_TASK 之後開全新 session 獨立審查（可選）
-        status_tok=$(grep -oE 'AIOS_STATUS: [A-Z_]+' "$combined" | tail -1 | awk '{print $2}')
         if [ "$REVIEW" = "true" ] && [ "$status_tok" = "DONE_TASK" ]; then
           log "review 輪：開 fresh session 審查上一個任務"
           rout="$SUP_DIR/review-out.json"
@@ -678,11 +726,12 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
       do_sleep "$SLEEP_BETWEEN" ;;
     rate_limit)
       rl_rounds=$((rl_rounds+1))
-      if [ "$rl_rounds" -gt 8 ]; then log "連續 rate-limit 超過 8 輪（約兩天），放棄——檢查帳號額度"; exit 1; fi
+      if [ "$rl_rounds" -gt 8 ]; then log "連續 rate-limit 超過 8 輪（約兩天），放棄——檢查帳號額度"; END_REASON=rate_limit_giveup; exit 1; fi
+      emit_event rate_limit_sleep "round ${rl_rounds}"
       sleep_until_reset "$(cat "$combined")"; iter=$((iter-1)) ;;   # 不計輪、不計失敗，但有自己的上限
     network)
       net_retries=$((net_retries+1))
-      if [ "$net_retries" -gt 6 ]; then log "網路重試超過 6 次，放棄"; exit 1; fi
+      if [ "$net_retries" -gt 6 ]; then log "網路重試超過 6 次，放棄"; END_REASON=network_giveup; exit 1; fi
       backoff=$(( NET_BASE * (1 << (net_retries-1)) ))
       [ "$backoff" -gt "$NET_MAX" ] && backoff=$NET_MAX
       log "網路錯誤，backoff ${backoff}s（第 $net_retries 次）"
@@ -694,14 +743,16 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
     no_status)
       nostatus_count=$((nostatus_count+1))
       log "協定漂移：exit 0 但無 AIOS_STATUS（$nostatus_count/3）"
-      if [ "$nostatus_count" -ge 3 ]; then log "協定漂移過多，停止——檢查 /work skill 是否還在目標 repo"; exit 1; fi
+      if [ "$nostatus_count" -ge 3 ]; then log "協定漂移過多，停止——檢查 /work skill 是否還在目標 repo"; END_REASON=protocol_drift; exit 1; fi
       do_sleep "$SLEEP_BETWEEN" ;;
   esac
 
   if [ "$consecutive_failures" -ge "$MAX_FAIL" ]; then
-    log "連續失敗達 $MAX_FAIL 次，停止。詳見 $SUP_DIR/{err.log,out.json}"; exit 1
+    log "連續失敗達 $MAX_FAIL 次，停止。詳見 $SUP_DIR/{err.log,out.json}"
+    END_REASON=failure_ceiling; exit 1
   fi
 done
 
 log "達 max_iterations（${MAX_ITER}），收工。總成本 \$${total_cost}"
+END_REASON=max_iterations
 exit 0
