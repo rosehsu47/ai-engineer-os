@@ -122,9 +122,12 @@ cd /path/to/repo && claude -p "/work"
 ## 5. 無人監督（supervisor）
 
 ```bash
+supervisor/supervisor.sh --doctor --repo /path/to/repo    # 首跑前體檢（零額度）
 supervisor/supervisor.sh --repo /path/to/repo --once      # 先單輪
 supervisor/supervisor.sh --repo /path/to/repo             # 正式（預設 ≤10 輪）
 supervisor/supervisor.sh --repo /path/to/repo --review    # 每任務加獨立審查
+supervisor/schedule-install.sh --repo /path/to/repo       # 固定時刻自動啟動
+#   （時刻設在 .ai/schedule.yml 的 schedule_start_times，launchd 排程）
 ```
 
 ```

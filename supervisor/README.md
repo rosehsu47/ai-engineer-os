@@ -66,6 +66,24 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
   - **硬門檻 `quota_stop_threshold_pct`**（預設 80）：只看 7d，達標即寫
     `.ai/STOP` 停下，保留個人額度（7d 要等數天，等待不划算；設 101 停用）
 
+## schedule-install.sh — 固定時刻自動啟動（launchd）
+
+```bash
+# 1. 在目標 repo 的 .ai/schedule.yml 設定啟動時刻
+#    schedule_start_times: "09:00,21:30"
+supervisor/schedule-install.sh --repo /path/to/repo             # 安裝/更新
+supervisor/schedule-install.sh --repo /path/to/repo --status    # 看狀態
+supervisor/schedule-install.sh --repo /path/to/repo --uninstall # 移除
+supervisor/schedule-install.sh --repo /path/to/repo --dry-run   # 只印 plist
+```
+
+用 macOS 原生 launchd（睡醒補跑、重開機存活），不自製排程迴圈。plist 可
+隨時從 schedule.yml 重新產生，`--doctor` 會顯示 job 是否載入。三件事不變：
+
+- **STOP 永遠贏過排程**——排程照觸發，supervisor 見 `.ai/STOP` 即退
+- lock 防重疊：排程觸發時若已有 supervisor 在跑，新 run 直接退出
+- agent 不能自己排程：`.ai/schedule.yml` 在 deny 名單上，只有人類能改時刻
+
 ## dashboard.sh — 靜態儀表板（零額度）
 
 ```bash

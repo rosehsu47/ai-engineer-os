@@ -1,4 +1,4 @@
-# supervisor 參數。扁平 key（bash 用 grep 讀，勿加巢狀結構）。
+# supervisor 參數與啟動時刻。扁平 key（bash 用 grep 讀，勿加巢狀結構）。
 # 命令列 flag 會覆蓋這裡的值。
 version: 1
 max_iterations_per_run: 10
@@ -9,12 +9,13 @@ rate_limit_fallback_sleep_minutes: 30
 network_backoff_base_seconds: 30
 network_backoff_max_seconds: 900
 max_cost_per_run_usd: 5
-# 5h 或 7d 額度用量達此百分比即寫 .ai/STOP 煞車，保留個人額度（設 101 停用此檢查）
+# 硬門檻：只看 7d 額度用量，達此百分比即寫 .ai/STOP 煞車保個人額度
+# （7d 要等數天、不值得等；設 101 停用此檢查）
 quota_stop_threshold_pct: 80
 # 軟門檻：5h 用量達此百分比就「不開新任務」，每隔 recheck 分鐘查一次 /usage
 # （零額度），降回門檻下自動繼續——任務永遠在額度充足時整輪跑完，不會
-# 中途斷頭重讀。只看 5h 額度（會 reset、值得等；7d 要等數天，交給硬門檻）。
-# 軟硬門檻的差距就是「一個任務的預算」。設 0 停用。
+# 中途斷頭重讀。只看 5h 額度且沒有上限：就算衝到 100% 也是等（會 reset、
+# 值得等），不會因 5h 高就停。設 0 停用。
 quota_wait_threshold_pct: 60
 quota_wait_recheck_minutes: 20
 # true = 每個 DONE_TASK 後開全新 session 獨立審查（多一次 session 成本）
@@ -22,3 +23,7 @@ review_after_task: false
 claude_model: "sonnet"
 # 空白分隔的簡單 flags；值內不可含空白（supervisor 未加引號展開）
 extra_claude_flags: ""
+# 每天固定時刻啟動 supervisor（由 supervisor/schedule-install.sh 讀取、
+# 產生 launchd job；supervisor 本身不讀這個 key）。空字串 = 不排程。
+# 例："09:00,21:30"。STOP/PAUSED/quota 門檻對排程啟動的 run 一樣有效。
+schedule_start_times: ""

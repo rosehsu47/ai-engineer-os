@@ -414,13 +414,19 @@ run_doctor() {
   if [ -f "$SUP_DIR/lock" ]; then
     lpid=$(cat "$SUP_DIR/lock" 2>/dev/null || echo "")
     if [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null; then
-      d_info "supervisor 正在跑（pid $lpid）"
+      d_info "supervisor 正在跑（pid ${lpid}）"
     else
       d_info "殘留 lock（pid ${lpid:-?} 已死）——下次啟動會自動清掉"
     fi
   fi
   if [ -f "$SUP_DIR/events.jsonl" ] && [ "$(stat -f %z "$SUP_DIR/events.jsonl" 2>/dev/null || echo 0)" -gt 1048576 ]; then
     d_info "events.jsonl 超過 1MB——非稽核檔，直接 truncate 或刪掉即可"
+  fi
+  if command -v launchctl >/dev/null 2>&1; then
+    lslug=$(basename "$REPO" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9-')
+    if launchctl list 2>/dev/null | grep -q "com.aios.supervisor.${lslug}"; then
+      d_info "launchd 排程已載入（com.aios.supervisor.${lslug}）——schedule-install.sh --status 看細節"
+    fi
   fi
   [ "$YOLO" = 1 ] && d_info "注意：--yolo 會跳過上面驗證的所有權限防線"
   # probe（可選，花錢）
@@ -720,7 +726,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
         ck_reason=$(lint_checkpoint "$ckpt")
         if [ "$ck_reason" != ok ]; then
           consecutive_failures=$((consecutive_failures+1))
-          log "警告：回報 productive 但 checkpoint 結構壞掉（$ck_reason），計失敗 $consecutive_failures/$MAX_FAIL"
+          log "警告：回報 productive 但 checkpoint 結構壞掉（${ck_reason}），計失敗 $consecutive_failures/$MAX_FAIL"
         fi
       fi
       do_sleep "$SLEEP_BETWEEN" ;;
