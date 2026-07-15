@@ -10,6 +10,8 @@
 #                 [--max-failures N] [--model M] [--claude-flags "..."]
 #                 [--yolo] [--wait-on-pause] [--dry-run] [--verbose]
 #   supervisor.sh --self-test        # 零額度：用內嵌 fixtures 驗證分類器
+#   supervisor.sh --doctor --repo X  # 零額度環境體檢（首跑前在一般終端機執行）
+#   supervisor.sh --doctor --probe --repo X  # 體檢＋headless 寫入實測（花少量額度）
 #
 # 安全閥：單 repo 單 supervisor（lock）、max_iterations、連續失敗上限、
 # 每輪 watchdog timeout、run 累計成本熔斷（max_cost_per_run_usd）、
@@ -18,6 +20,7 @@ set -u
 
 # ---------- 參數與預設 ----------
 REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
+DOCTOR=0 PROBE=0
 MAX_ITER="" MAX_FAIL="" MODEL="" EXTRA_FLAGS=""
 
 while [ $# -gt 0 ]; do
@@ -33,6 +36,8 @@ while [ $# -gt 0 ]; do
     --wait-on-pause) WAIT_ON_PAUSE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --self-test) SELF_TEST=1; shift ;;
+    --doctor) DOCTOR=1; shift ;;
+    --probe) PROBE=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
     *) echo "unknown flag: $1" >&2; exit 64 ;;
   esac
@@ -246,6 +251,165 @@ lint_state() { # 檢查 $REPO 的四個狀態檔；每個異常 log 一行，ech
   echo "$bad"
 }
 
+# ---------- doctor：環境體檢（唯讀零額度；--probe 才花錢實測寫入） ----------
+# 純檢查函式（吃路徑、印問題、無副作用）→ self-test 可覆蓋；
+# run_doctor 只負責把它們串起來印 ✅/❌。
+DOCTOR_FAIL=0
+d_ok()   { printf '  ✅ %s\n' "$1"; }
+d_bad()  { printf '  ❌ %s\n     修法：%s\n' "$1" "$2"; DOCTOR_FAIL=$((DOCTOR_FAIL+1)); }
+d_info() { printf '  ℹ️  %s\n' "$1"; }
+
+doctor_tree_check() { # <repo> → 每行印一個缺少的 .ai/ 路徑；全齊則無輸出
+  local p
+  for p in CONTRACT.md schedule.yml tasks/backlog.yaml tasks/doing.yaml \
+           tasks/done.yaml state/checkpoint.json rubrics agents receipts reports; do
+    [ -e "$1/.ai/$p" ] || echo ".ai/$p"
+  done
+}
+
+doctor_residue_check() { # <file> → 印未填完的 {{PLACEHOLDER}}（去重）；乾淨則無輸出
+  grep -o '{{[A-Za-z_]*}}' "$1" 2>/dev/null | sort -u
+}
+
+doctor_perm_drift() { # <allow|deny> <模板 settings.json> <目標> → 印目標缺少的條目
+  # 跳過 {{…}} 佔位條目（那是 /ai-init 訪談要換掉的，不算漂移）
+  local sec="$1" tpl="$2" tgt="$3" e
+  if [ "$HAVE_JQ" = 1 ]; then
+    jq -r ".permissions.${sec}[]" "$tpl" 2>/dev/null | grep -v '{{' | while IFS= read -r e; do
+      jq -e --arg s "$sec" --arg e "$e" '.permissions[$s] | index($e)' "$tgt" >/dev/null 2>&1 || echo "$e"
+    done
+  else
+    sed -n "/\"$sec\"/,/\]/p" "$tpl" | grep -oE '"[^"]+\([^"]*\)"' | tr -d '"' | grep -v '{{' \
+    | while IFS= read -r e; do
+        grep -qF "\"$e\"" "$tgt" || echo "$e"
+      done
+  fi
+}
+
+run_probe() { # headless 寫入實測：不走 /work（不吃任務、不動 agent 狀態）
+  echo "probe：headless 寫入實測（spawn 一次 claude -p，花少量額度，3 分鐘 watchdog）"
+  local pf="$REPO/.ai/supervisor/probe.txt" pout ppid pdeadline
+  pout="$SUP_DIR/probe-out.json"
+  rm -f "$pf"
+  ( cd "$REPO"; exec claude -p "用 Write 工具建立檔案 .ai/supervisor/probe.txt，內容只有兩個字元：OK。完成後印出一行：AIOS_PROBE: DONE" \
+      --output-format json --model "$MODEL" $PERM_FLAG ) >"$pout" 2>&1 &
+  ppid=$!
+  pdeadline=$(( $(date +%s) + 180 ))
+  while kill -0 "$ppid" 2>/dev/null; do
+    if [ "$(date +%s)" -gt "$pdeadline" ]; then
+      kill -TERM "$ppid" 2>/dev/null; sleep 2; kill -KILL "$ppid" 2>/dev/null; break
+    fi
+    sleep 3
+  done
+  wait "$ppid" 2>/dev/null || true
+  if [ -f "$pf" ] && grep -q OK "$pf"; then
+    rm -f "$pf"   # supervisor 是 bash，不受 agent 的 rm deny 約束
+    d_ok "headless Write 放行——probe 檔已寫入並清除"
+  else
+    d_bad "headless 寫入失敗（probe 檔沒出現）" \
+      "AI-RUNTIME 已知限制 4：(a) 目標 repo settings.local.json 要有 Edit(**)/Write(**) allow (b) 確認不是從 Claude session 巢狀執行 (c) 信任的 repo 才考慮 --yolo。原始輸出：$pout"
+  fi
+}
+
+run_doctor() {
+  echo "doctor：環境體檢 repo=$REPO"
+  local miss res tgt tpl drift r k lpid
+  # 巢狀 session：權限測試結果會失真（AI-RUNTIME 已知限制 4 的成因）
+  if [ -n "${CLAUDECODE:-}${CLAUDE_CODE_ENTRYPOINT:-}" ]; then
+    printf '  ⚠️  你在 Claude session 裡面——權限相關結果不代表真實 headless 行為，\n'
+    printf '     請在一般終端機重跑本體檢（AI-RUNTIME 已知限制 4）\n'
+  fi
+  # 工具鏈
+  if command -v claude >/dev/null 2>&1; then
+    d_ok "claude CLI：$(claude --version 2>/dev/null | head -1)"
+  else
+    d_bad "找不到 claude CLI" "安裝 Claude Code 並確認在 PATH"
+  fi
+  if [ "$HAVE_JQ" = 1 ]; then d_info "jq：有（JSON 解析走 jq）"
+  else d_info "jq：無（退回 grep/sed 保守萃取——可用，裝了更穩）"; fi
+  # .ai/ 樹
+  miss=$(doctor_tree_check "$REPO")
+  if [ -z "$miss" ]; then d_ok ".ai/ 目錄結構完整"
+  else d_bad ".ai/ 結構缺：$(printf '%s' "$miss" | tr '\n' ' ')" "重跑 /ai-init，或從 templates/ai/ 補檔"; fi
+  # CONTRACT 訪談殘留
+  if [ -f "$REPO/.ai/CONTRACT.md" ]; then
+    res=$(doctor_residue_check "$REPO/.ai/CONTRACT.md")
+    if [ -z "$res" ]; then d_ok "CONTRACT.md 訪談已填完（無 {{ 殘留）"
+    else d_bad "CONTRACT.md 有未填 placeholder：$(printf '%s' "$res" | tr '\n' ' ')" "/ai-init 的訪談沒做完——補填或重跑"; fi
+  fi
+  # settings.local.json
+  tgt="$REPO/.claude/settings.local.json"
+  if [ ! -f "$tgt" ]; then
+    d_bad "缺 .claude/settings.local.json" "重跑 /ai-init（它會從 templates/ai/settings.local.json 併入）"
+  else
+    if [ "$HAVE_JQ" = 1 ] && ! jq -e . "$tgt" >/dev/null 2>&1; then
+      d_bad "settings.local.json 不是合法 JSON" "手動修復或從模板重併"
+    fi
+    res=$(doctor_residue_check "$tgt")
+    if [ -n "$res" ]; then
+      d_bad "settings.local.json 有未填 placeholder：$(printf '%s' "$res" | tr '\n' ' ')" "把 {{TEST_COMMAND}}/{{BUILD_COMMAND}} 換成真實指令"
+    fi
+    if grep -qF '"Edit(**)"' "$tgt" && grep -qF '"Write(**)"' "$tgt"; then
+      d_ok "Edit(**)/Write(**) allow 條目在（headless 寫檔的必要條件）"
+    else
+      d_bad "settings.local.json 缺 Edit(**) 或 Write(**) allow" "headless -p 下 acceptEdits 不足以放行——補上這兩條"
+    fi
+    tpl="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/templates/ai/settings.local.json"
+    if [ -f "$tpl" ]; then
+      drift=$(doctor_perm_drift deny "$tpl" "$tgt")
+      if [ -z "$drift" ]; then d_ok "deny 清單與模板一致（硬防線沒有漂移）"
+      else d_bad "deny 清單缺模板條目：$(printf '%s' "$drift" | tr '\n' ' ')" "手動補進該 repo 的 settings.local.json（deny 是硬防線）"; fi
+      drift=$(doctor_perm_drift allow "$tpl" "$tgt")
+      if [ -z "$drift" ]; then d_ok "allow 清單涵蓋模板條目"
+      else d_bad "allow 清單缺模板條目：$(printf '%s' "$drift" | tr '\n' ' ')" "手動補進該 repo 的 settings.local.json——缺的指令 headless 下會被無聲拒絕"; fi
+    else
+      d_info "找不到模板 settings.local.json（supervisor 被單獨複製出去？）——跳過 drift 檢查"
+    fi
+  fi
+  # 目標 repo 的 skills
+  miss=""
+  for k in work review ai-task ai-answer ai-wrap; do
+    [ -f "$REPO/.claude/skills/$k/SKILL.md" ] || miss="$miss $k"
+  done
+  if [ -z "$miss" ]; then d_ok "目標 repo skills 齊全（work/review/ai-task/ai-answer/ai-wrap）"
+  else d_bad "目標 repo 缺 skills：$miss" "從 templates/skills/ 複製到 {repo}/.claude/skills/（協定漂移的常見根因）"; fi
+  # 狀態檔結構（doctor 是人看的，這裡做硬判定）
+  r=$(lint_checkpoint "$REPO/.ai/state/checkpoint.json")
+  if [ "$r" = ok ]; then d_ok "checkpoint.json 結構"
+  else d_bad "checkpoint.json：$r" "下一輪 /work 會自癒；急的話依 AI-RUNTIME schema 手動重置"; fi
+  for k in backlog doing done; do
+    r=$(lint_tasks "$REPO/.ai/tasks/$k.yaml" "$k")
+    if [ "$r" = ok ]; then d_ok "${k}.yaml 結構"
+    else d_bad "${k}.yaml：$r" "下一輪 /work 會自癒（done.yaml 救不回是改名保留，不會清空）"; fi
+  done
+  # 旗標
+  if [ -f "$REPO/.ai/STOP" ]; then
+    d_info "STOP 旗標存在：$(head -1 "$REPO/.ai/STOP" 2>/dev/null)——supervisor 不會啟動"
+  fi
+  if [ -f "$REPO/.ai/PAUSED" ]; then
+    if grep -q '^## 人類回覆' "$REPO/.ai/PAUSED" 2>/dev/null; then
+      d_info "PAUSED 已有人類回覆——下一輪 /work 會消化並清旗"
+    else
+      d_info "PAUSED 等待回答中：$(head -1 "$REPO/.ai/PAUSED" 2>/dev/null)（panel 或 /ai-answer 回覆）"
+    fi
+  fi
+  if [ -f "$SUP_DIR/lock" ]; then
+    lpid=$(cat "$SUP_DIR/lock" 2>/dev/null || echo "")
+    if [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null; then
+      d_info "supervisor 正在跑（pid $lpid）"
+    else
+      d_info "殘留 lock（pid ${lpid:-?} 已死）——下次啟動會自動清掉"
+    fi
+  fi
+  [ "$YOLO" = 1 ] && d_info "注意：--yolo 會跳過上面驗證的所有權限防線"
+  # probe（可選，花錢）
+  [ "$PROBE" = 1 ] && run_probe
+  echo ""
+  if [ "$DOCTOR_FAIL" = 0 ]; then echo "doctor：全部通過"
+  else echo "doctor：$DOCTOR_FAIL 項失敗（修法見各 ❌）"; fi
+  [ "$DOCTOR_FAIL" = 0 ]
+}
+
 # ---------- self-test：零額度驗證分類器 ----------
 run_self_test() {
   local dir pass=0 fail=0
@@ -341,6 +505,25 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   tl "doing 兩筆"             bad "$(lint_tasks "$dir/t.yaml" doing)"
   printf 'version: 1\ntasks:\n  - id: X-01\n' > "$dir/t.yaml"
   tl "id 非 T-NNN"            bad "$(lint_tasks "$dir/t.yaml" done)"
+  echo "doctor 純檢查（tree / placeholder 殘留 / deny-drift）："
+  mkdir -p "$dir/repo/.ai/tasks" "$dir/repo/.ai/state" "$dir/repo/.ai/rubrics" \
+           "$dir/repo/.ai/agents" "$dir/repo/.ai/receipts" "$dir/repo/.ai/reports"
+  : > "$dir/repo/.ai/CONTRACT.md"; : > "$dir/repo/.ai/schedule.yml"
+  for k in backlog doing done; do : > "$dir/repo/.ai/tasks/$k.yaml"; done
+  : > "$dir/repo/.ai/state/checkpoint.json"
+  tl "tree 完整"     ok  "$([ -z "$(doctor_tree_check "$dir/repo")" ] && echo ok || echo bad)"
+  rm "$dir/repo/.ai/tasks/doing.yaml"
+  tl "tree 缺 doing" bad "$([ -z "$(doctor_tree_check "$dir/repo")" ] && echo ok || echo bad)"
+  printf 'mission: {{MISSION}}\n' > "$dir/repo/.ai/CONTRACT.md"
+  tl "CONTRACT {{ 殘留" bad "$([ -z "$(doctor_residue_check "$dir/repo/.ai/CONTRACT.md")" ] && echo ok || echo bad)"
+  printf 'mission: real text\n' > "$dir/repo/.ai/CONTRACT.md"
+  tl "CONTRACT 已填完"  ok  "$([ -z "$(doctor_residue_check "$dir/repo/.ai/CONTRACT.md")" ] && echo ok || echo bad)"
+  printf '{\n  "permissions": {\n    "allow": [\n      "Edit(**)",\n      "Bash(date:*)",\n      "Bash({{TEST_COMMAND}}:*)"\n    ],\n    "deny": [\n      "Bash(git push:*)",\n      "Bash(rm:*)"\n    ]\n  }\n}\n' > "$dir/tpl.json"
+  printf '{\n  "permissions": {\n    "allow": [\n      "Edit(**)"\n    ],\n    "deny": [\n      "Bash(git push:*)"\n    ]\n  }\n}\n' > "$dir/tgt.json"
+  tl "deny-drift 抓到缺條目"  ok "$([ "$(doctor_perm_drift deny "$dir/tpl.json" "$dir/tgt.json")" = 'Bash(rm:*)' ] && echo ok || echo bad)"
+  tl "allow-drift 跳過 {{ 佔位" ok "$([ "$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" = 'Bash(date:*)' ] && echo ok || echo bad)"
+  cp "$dir/tpl.json" "$dir/tgt.json"
+  tl "drift 無漂移"           ok "$([ -z "$(doctor_perm_drift deny "$dir/tpl.json" "$dir/tgt.json")$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" ] && echo ok || echo bad)"
   rm -rf "$dir"
   echo "self-test: pass=$pass fail=$fail"
   [ "$fail" = 0 ]
@@ -374,6 +557,10 @@ REVIEW="${REVIEW:-$(sched_get review_after_task false)}"
 
 PERM_FLAG="--permission-mode acceptEdits"
 [ "$YOLO" = 1 ] && PERM_FLAG="--dangerously-skip-permissions"
+
+if [ "$DOCTOR" = 1 ]; then
+  run_doctor; exit $?
+fi
 
 # lock（單 repo 單 supervisor；殘留 lock 以 pid 存活判定）
 LOCK="$SUP_DIR/lock"

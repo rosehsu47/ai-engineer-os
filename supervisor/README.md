@@ -26,6 +26,8 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--wait-on-pause` | PAUSED 時每 5 分鐘輪詢而不是退出 |
 | `--dry-run` | 印出將執行的設定與指令，不花額度 |
 | `--self-test` | 零額度：用內嵌 fixtures 驗證錯誤分類器與睡眠計算 |
+| `--doctor` | 零額度環境體檢：`.ai/` 樹、CONTRACT `{{` 殘留、settings allow/deny 對模板的 drift、skills 齊全、狀態檔結構 lint、旗標狀態。**在一般終端機跑**（巢狀 Claude session 會讓權限結果失真，doctor 會自己警告） |
+| `--probe`（配 `--doctor`） | 花少量額度：spawn 一次 `claude -p` 實測 headless 寫入權限（寫 `.ai/supervisor/probe.txt`，3 分鐘 watchdog），是 AI-RUNTIME 已知限制 4 檢查清單的可執行版 |
 
 參數預設值都在目標 repo 的 `.ai/schedule.yml`（扁平 key）。
 

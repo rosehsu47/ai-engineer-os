@@ -244,9 +244,10 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
    從巢狀 Claude session 呼叫 `claude -p` 時，子 session 的檔案寫入被父層
    權限系統攔下，因此「/work 在 headless 下成功寫檔」只驗證到協定層
    （被擋時 agent 正確回報 BLOCKED、還原 stash、零損害），沒驗證到放行路徑。
-   **首次使用檢查清單**：從一般終端機（不在 Claude session 內）跑
-   `supervisor.sh --repo X --once`；若 receipts/輸出顯示權限阻擋，
-   依序嘗試 (a) 確認目標 repo `.claude/settings.local.json` 有
-   `Edit(**)`/`Write(**)` allow 條目，(b) `--yolo`（信任的 repo 才用）。
+   **首次使用：從一般終端機（不在 Claude session 內）跑
+   `supervisor.sh --doctor --probe --repo X`**——doctor 是環境體檢
+   （樹完整性、settings drift、skills、狀態檔結構；零額度），probe 實測
+   headless 寫入（spawn 一次 claude 要求寫 probe 檔，花少量額度）；
+   失敗時輸出會附修法（allow 條目 / 巢狀 session / `--yolo` 判斷）。
    /work 演算法本身已逐步實跑驗證（產物鏈：雙 commit、receipt、
    checkpoint、done.yaml 全部正確）。
