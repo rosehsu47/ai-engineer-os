@@ -116,6 +116,12 @@ FAIL 時 reviewer **不自己修**——把修正任務（priority 1）排進 ba
 - `session_notes`：≤3 行，下一個 session 必須知道的事
 - **規則：整檔重寫，不做局部修補**。JSON 壞掉時：從本 schema 重置、
   在 memory.md 記一筆、繼續工作（自癒優先於追究）
+- **時間戳一律用 `date` 指令取實際系統時間**
+  （`date +"%Y-%m-%dT%H:%M:%S%z"`；時區 `+0800` 或 `+08:00` 皆合法），
+  **不得自行推算**——agent 對「現在幾點」沒有可靠感知，猜的時間戳會
+  污染 panel 顯示、報表排序與稽核軌跡。此規則適用於協定內**所有**
+  時間欄位：`updated_at`、`created_at`、`started_at`、`finished_at`、
+  receipt frontmatter、`## 人類回覆（時間）` 節標題
 
 ## tasks/*.yaml schema
 

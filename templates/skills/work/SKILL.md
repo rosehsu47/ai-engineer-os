@@ -18,6 +18,9 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
 - 最後一行輸出必是：
   `AIOS_STATUS: <STATUS> task=<id|none> score=<0-100|na> receipt=<路徑|none>`
 - checkpoint.json 與 tasks/*.yaml 一律**整檔重寫**
+- 所有時間戳（`updated_at`/`started_at`/`finished_at`/receipt 時間）
+  一律跑 `date +"%Y-%m-%dT%H:%M:%S%z"` 取實際時間，**不得自行推算**
+  ——你對「現在幾點」沒有可靠感知，猜的時間會污染稽核軌跡
 - 每完成一個子步驟就更新 checkpoint 的 `task_step`（你隨時可能被殺，
   下一個 session 靠它續作）
 - 只 `git add` 你為了這個任務修改的檔案，**禁止 `git add -A`**
