@@ -11,6 +11,7 @@ repo (never in-process session state).
 | File | Purpose |
 |---|---|
 | `AI-RUNTIME.md` | Protocol spec — schemas, `AIOS_STATUS`, error recovery |
+| `ROADMAP.md` | Vision-vs-reality audit + next-phase plan and the deliberate non-goals |
 | `MANUAL.md` | Operator's manual with flow diagrams |
 | `supervisor/README.md` | The unattended loop (`supervisor.sh`) — recovery, cost breaker, kill switch |
 | `panel/README.md` | Local web control panel — multi-repo status, inline answers, STOP button |
