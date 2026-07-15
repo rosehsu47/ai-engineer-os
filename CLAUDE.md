@@ -23,6 +23,7 @@ repo (never in-process session state).
 | `/ai-init` | Installs the `.ai/` Agent Runtime Workspace into a target repo (copies templates, interviews the user to fill the CONTRACT, wires up permissions) |
 | `/ai-report` | Aggregates a target repo's `.ai/receipts` into daily/weekly reports (PR description draft, changelog, résumé material) |
 | `/ai-ship` | Pushes a target repo's `ai/queue` branch to GitHub and opens/updates a PR (description auto-generated from receipts) — external action, human-triggered only |
+| `/ai-answer` | Scans every repo in `~/.aios-repos` for `.ai/PAUSED`, surfaces all pending questions, and walks the user through answering each one (writes `## 人類回覆` sections — never deletes `PAUSED` or edits task files itself) |
 
 ## Key rules (always apply)
 
