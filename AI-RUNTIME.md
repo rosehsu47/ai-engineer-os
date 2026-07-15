@@ -221,7 +221,11 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
    硬防線只有 `.claude/settings.local.json` 的 permission deny 規則
    （由 /ai-init 安裝，擋 `.claude/**` 與 `.ai/CONTRACT.md` 的編輯與
    白名單外的 Bash）。deny 規則的具體行為隨 Claude Code 版本演進，
-   高風險 repo 請勿使用 `--yolo`。
+   高風險 repo 請勿使用 `--yolo`。已知殘餘繞道：`Bash(git checkout:*)`
+   在白名單上（branch 工作流需要），理論上可從 git 歷史還原被 deny
+   保護的檔案——收緊會弄壞 /work 的分支流程，記錄在案、接受不堵。
+   目標 repo 的 deny 清單被手改或漏併時，`supervisor.sh --doctor`
+   的 deny-drift 檢查會抓出來。
 2. **LLM 寫壞 YAML/JSON 是遲早的事**：緩解有四層——整檔重寫、壞檔
    自癒重置（`done.yaml` 例外：改名保留不清空）、supervisor 檢查
    checkpoint mtime 前進、supervisor 的結構 lint（啟動時全檢並警告；

@@ -13,6 +13,8 @@
       "Bash(git branch:*)",
       "Bash(git stash:*)",
       "Bash(git rev-parse:*)",
+      "Bash(git show:*)",
+      "Bash(date:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
