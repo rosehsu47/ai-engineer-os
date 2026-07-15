@@ -97,10 +97,12 @@ fixtures、放寬 `classify()` 的 regex（先加測試再改，見下方限制 
 
 ## 已知限制（誠實條款）
 
-1. **rate-limit 偵測靠 CLI 訊息字串**（已知變體：`usage limit` /
-   `session limit`、`resets 8pm` / `resets 6:50am`——limit 種類與帶分鐘的
-   時間都要能認），CLI 改版可能失效——失效時會落到「未知崩潰」分類，
-   行為退化成有界重試後退出，不會爆走；修法見上方 recovery SOP。
+1. **rate-limit 偵測靠 CLI 訊息字串**（已認得：`usage/session/weekly
+   limit`、`resets [at] 8pm` / `6:50am`、headless 的
+   `…limit reached|<unix epoch>`（直接睡到 epoch）、`rate_limit_error`、
+   裸 `429`），CLI 改版可能失效——失效時會落到「未知崩潰」分類，
+   行為退化成有界重試後退出，不會爆走；修法見上方 recovery SOP
+   （鐵律：先加 fixture 再改 regex）。
 2. **權限**：預設 `acceptEdits` + 目標 repo 的 Bash allowlist。agent 用到
    白名單外的指令會被無聲拒絕，任務通常以 blocked/failed 收場——去
    `.claude/settings.local.json` 補白名單。注意 `acceptEdits` 只放行

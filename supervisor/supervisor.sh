@@ -85,7 +85,9 @@ classify() {
     QUEUE_EMPTY)  echo queue_empty; return ;;
     DONE_TASK|TASK_PARTIAL|BLOCKED|CONTRACT_HALT) echo productive; return ;;
   esac
-  if printf '%s' "$all" | grep -qiE 'hit your [a-z ]*limit|(usage|session|weekly) limit|rate.?limit|resets [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)'; then
+  # 改這個 regex 前，先在 run_self_test 加上該訊息「原文」的 fixture——
+  # CLI 的 limit 文案變體很多，fixture 先紅再改才知道沒弄壞舊變體
+  if printf '%s' "$all" | grep -qiE 'hit your [a-z ]*limit|(usage|session|weekly) limit|limit reached|rate.?limit|(^|[^0-9])429([^0-9]|$)|resets( at)? [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)'; then
     echo rate_limit; return
   fi
   if printf '%s' "$all" | grep -qiE 'overloaded|529|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed|socket hang|temporarily unavailable'; then
@@ -98,14 +100,24 @@ classify() {
   echo no_status   # exit 0 但沒有 AIOS_STATUS 行：協定漂移
 }
 
-# ---------- rate-limit 睡眠（解析 "resets 8pm" 失敗則固定 fallback） ----------
+# ---------- rate-limit 睡眠（epoch 形優先，再試 "resets 8pm"，都失敗則固定 fallback） ----------
 sleep_until_reset() { # $1 = 全部輸出文字
-  local ts hour min ampm target now cap
-  ts=$(printf '%s' "$1" | grep -oiE 'resets [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)' | head -1)
+  local ts hour min ampm target now cap epoch
+  now=$(date +%s)
+  # headless CLI 最機器可讀的形式：「…limit reached|<unix epoch>」→ 直接睡到 epoch
+  epoch=$(printf '%s' "$1" | grep -oiE 'limit reached\|[0-9]{9,}' | head -1 | grep -oE '[0-9]{9,}')
+  if [ -n "${epoch:-}" ]; then
+    target=$((epoch + 120))                          # reset 後多等 2 分鐘
+    cap=$((now + 21600))                             # 上限 6 小時
+    [ "$target" -gt "$cap" ] && target=$cap
+    [ "$target" -le "$now" ] && target=$((now + 120))  # epoch 已過：至少等 2 分鐘再試
+    log "rate limit: 睡到 $(date -r "$target" '+%H:%M')（reset epoch ${epoch}）"
+    do_sleep $((target - now)); return
+  fi
+  ts=$(printf '%s' "$1" | grep -oiE 'resets( at)? [0-9]{1,2}(:[0-9]{2})?[[:space:]]?(am|pm)' | head -1)
   hour=$(printf '%s' "$ts" | grep -oE '[0-9]{1,2}' | head -1)
   min=$(printf '%s' "$ts" | grep -oE ':[0-9]{2}' | head -1 | tr -d ':')
   ampm=$(printf '%s' "$ts" | grep -oiE '(am|pm)' | tail -1 | tr 'A-Z' 'a-z')
-  now=$(date +%s)
   if [ -n "${hour:-}" ] && [ -n "${ampm:-}" ]; then
     target=$(date -j -f '%Y-%m-%d %I:%M%p' "$(date '+%Y-%m-%d') ${hour}:${min:-00}${ampm}" +%s 2>/dev/null || echo "")
     if [ -n "$target" ]; then
@@ -213,6 +225,11 @@ run_self_test() {
 /upgrade or /usage-credits to finish what you're working on."
   t "limit+classifier 混合" rate_limit 1 "Error: claude-opus-4-8[1m] is temporarily unavailable, so auto mode cannot determine the safety of Write right now.
 You've hit your session limit · resets 6:50am (Asia/Taipei)"
+  t "limit reached+epoch" rate_limit 1 'Claude AI usage limit reached|1752555600'
+  t "API rate_limit_error" rate_limit 1 '{"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your per-minute rate limit"}}'
+  t "HTTP 429 裸碼"       rate_limit  1 'API Error: 429 {"type":"error"}'
+  t "resets 帶 at"        rate_limit  1 'Your limit will replenish · resets at 8pm (Asia/Taipei)'
+  t "weekly limit 帶日期" rate_limit  1 "You've hit your weekly limit · resets Jul 17 at 12pm (Asia/Taipei)"
   t "網路斷線"       network     1 'Error: fetch failed ECONNRESET'
   t "伺服器過載"     network     1 'API Error: 529 overloaded_error'
   t "classifier 暫時不可用" network 1 'Error: claude-opus-4-8[1m] is temporarily unavailable, so auto mode cannot determine the safety of Write right now. Wait briefly and then try this action again.'
@@ -221,9 +238,17 @@ You've hit your session limit · resets 6:50am (Asia/Taipei)"
   t "is_error"       crash       0 '{"is_error": true, "result":"boom"}'
   t "協定漂移"       no_status   0 '{"result":"我做完了但忘記印狀態行"}'
   echo "睡眠計算（AIOS_FAKE_SLEEP=1）："
-  AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "resets 8pm blah" | sed 's/^/  /'
-  AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "resets 6:50am (Asia/Taipei)" | sed 's/^/  /'
-  AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "無法解析的訊息" | sed 's/^/  /'
+  ts() { # ts <名稱> <輸出需含> <訊息> —— 斷言睡眠走對分支且真的睡了
+    local got; got=$(AIOS_FAKE_SLEEP=1 RL_FALLBACK_MIN=30 sleep_until_reset "$3" 2>&1)
+    if printf '%s' "$got" | grep -q "$2" && printf '%s' "$got" | grep -q 'FAKE_SLEEP'; then
+      pass=$((pass+1)); echo "  ok  $1"
+    else fail=$((fail+1)); echo "  FAIL $1 -> $got"; fi
+  }
+  ts "resets 8pm→睡到 reset"       '睡到' 'resets 8pm blah'
+  ts "resets 6:50am→睡到 reset"    '睡到' 'resets 6:50am (Asia/Taipei)'
+  ts "resets at 8pm→睡到 reset"    '睡到' "You've hit your usage limit · resets at 8pm (Asia/Taipei)"
+  ts "epoch 已過→floor 120s"       'FAKE_SLEEP 120s' 'Claude AI usage limit reached|100000000'
+  ts "無法解析→fallback 30 分鐘"   '無法解析' '無法解析的訊息'
   echo "quota 文字解析（parse_usage_pct）："
   usage_txt='Current session: 6% used · resets Jul 9 at 11:30pm (Asia/Taipei)
 Current week (all models): 44% used · resets Jul 15 at 12pm (Asia/Taipei)

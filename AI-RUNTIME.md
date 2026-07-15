@@ -218,11 +218,13 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
    高風險 repo 請勿使用 `--yolo`。
 2. **LLM 寫壞 YAML/JSON 是遲早的事**：協定用「整檔重寫 + 壞檔自癒重置 +
    supervisor 檢查 checkpoint mtime 前進」三層緩解，但沒有 schema validator。
-3. **rate-limit 偵測依賴 CLI 訊息格式**（已知變體：
-   `You've hit your usage limit · resets 8pm (Asia/Taipei)`、
-   `You've hit your session limit · resets 6:50am (Asia/Taipei)`——
-   limit 種類與帶分鐘的時間都要能認），版本間可能改變；
-   supervisor 解析失敗時退回固定睡眠，所有未知錯誤都收斂到「有界重試」。
+3. **rate-limit 偵測依賴 CLI 訊息格式**（已認得的變體：
+   `You've hit your usage/session/weekly limit · resets [at] 8pm/6:50am`、
+   headless 的 `Claude AI usage limit reached|<unix epoch>`（epoch 形
+   最機器可讀，supervisor 會直接睡到 epoch）、API 的 `rate_limit_error`、
+   裸 `429`），版本間可能再改變；supervisor 解析失敗時退回固定睡眠，
+   所有未知錯誤都收斂到「有界重試」。改分類 regex 前，先把新變體原文
+   加進 `supervisor.sh --self-test` 的 fixtures。
 4. **headless 寫入權限未經真實終端驗證**（2026-07-08 建置時的實測侷限）：
    從巢狀 Claude session 呼叫 `claude -p` 時，子 session 的檔案寫入被父層
    權限系統攔下，因此「/work 在 headless 下成功寫檔」只驗證到協定層
