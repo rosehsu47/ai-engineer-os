@@ -59,11 +59,14 @@ func main() {
 	reposFlag := flag.String("repos", "", "逗號分隔的 repo 路徑；空 = 讀 ~/.aios-repos")
 	flag.Parse()
 
-	repos := loadRepos(*reposFlag)
-	if len(repos) == 0 {
+	if len(loadRepos(*reposFlag)) == 0 {
 		fmt.Fprintln(os.Stderr, "沒有 repo：用 -repos /a,/b 或在 ~/.aios-repos 一行一個路徑")
 		os.Exit(64)
 	}
+	// repo 清單每個請求重讀（熱重載）：/ai-init 註冊新 repo 進 ~/.aios-repos
+	// 後，5 秒內卡片自動出現，panel 不用重啟。-repos flag 給定時清單固定，
+	// 重讀只是重切字串，成本可忽略。
+	currentRepos := func() []string { return loadRepos(*reposFlag) }
 	if !strings.HasPrefix(*addr, "127.0.0.1:") && !strings.HasPrefix(*addr, "localhost:") {
 		fmt.Fprintln(os.Stderr, "拒絕綁定非 localhost 位址（panel 無認證，僅供本機）")
 		os.Exit(64)
@@ -74,6 +77,7 @@ func main() {
 		fmt.Fprint(w, pageHTML)
 	})
 	http.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
+		repos := currentRepos()
 		states := make([]RepoState, 0, len(repos))
 		for _, p := range repos {
 			states = append(states, readRepo(p))
@@ -83,7 +87,7 @@ func main() {
 	})
 	http.HandleFunc("/api/usage", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(getUsage(repos))
+		json.NewEncoder(w).Encode(getUsage(currentRepos()))
 	})
 	http.HandleFunc("/api/answer", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -91,7 +95,7 @@ func main() {
 			return
 		}
 		repo, text := r.FormValue("repo"), strings.TrimSpace(r.FormValue("text"))
-		if !allowed(repos, repo) || text == "" {
+		if !allowed(currentRepos(), repo) || text == "" {
 			http.Error(w, "unknown repo or empty answer", 400)
 			return
 		}
@@ -115,7 +119,7 @@ func main() {
 			return
 		}
 		repo, action := r.FormValue("repo"), r.FormValue("action")
-		if !allowed(repos, repo) {
+		if !allowed(currentRepos(), repo) {
 			http.Error(w, "unknown repo", 400)
 			return
 		}
@@ -139,7 +143,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	fmt.Printf("aios-panel: http://%s  （repos: %d 個）\n", *addr, len(repos))
+	fmt.Printf("aios-panel: http://%s  （repos: %d 個，清單熱重載）\n", *addr, len(currentRepos()))
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -10,6 +10,9 @@ aios-panel -repos /path/a,/path/b     # 或把路徑一行一個寫進 ~/.aios-r
 open http://127.0.0.1:7777
 ```
 
+repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 進去
+（/ai-init 收尾會自動做）5 秒內卡片就出現，panel 不用重啟。
+
 ## 畫面上有什麼（每 5 秒自動更新）
 
 每個 repo 一張卡：
