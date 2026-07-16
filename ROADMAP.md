@@ -69,6 +69,16 @@
   以規格形式寫出（六條 conformance 檢核）；Codex 實測後回填差距
   清單（哪些東西其實是 Claude 耦合：skill 載入方式、權限模型、
   /usage 解析）。
+  **執行順序（fixture-first 的同一精神：先實測、後改碼）**：
+  1. 零改動實測：測試 repo 手動 `codex exec`，把 /work SKILL 演算法
+     餵進 AGENTS.md，對照六條契約看哪裡斷（整檔重寫？狀態行？
+     尊重 PAUSED？）→ 產出真實差距清單
+  2. 憑清單改 supervisor，預定接縫是 schedule.yml 加 `agent_command`
+     （預設 `claude -p "/work" --output-format json`）——supervisor
+     對 agent 的唯一要求：「在 repo cwd 跑一輪、結尾印 AIOS_STATUS
+     行到 stdout」；cost 熔斷與 /usage quota 煞車解析不到就優雅
+     降級（詞彙保留、策略停用），rate-limit 分類器先加 Codex 文案
+     fixtures 再放寬。協定層 `.ai/` 檔案零改動。
 
 **D — 排程與觀測**
 - **D1 `supervisor/schedule-install.sh`**：launchd 產生器，讀
