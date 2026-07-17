@@ -79,9 +79,11 @@ window). Swap the loop; the vocabulary still holds.
 The durable assets, in order of value:
 
 1. **Contract with hard approval boundaries** (`CONTRACT.md` §7) — new
-   dependencies, schema migrations, >10 files touched, ambiguous acceptance
-   criteria: the agent must write `.ai/PAUSED` and stop. Not a prompt-level
-   suggestion — the file protocol and permission deny-rules enforce it.
+   dependencies, schema migrations, ambiguous acceptance criteria: the
+   agent must write `.ai/PAUSED` and stop. Large changes (>10 files)
+   don't pause — they raise a flag that forces an independent review
+   round instead. Not a prompt-level suggestion — the file protocol and
+   permission deny-rules enforce it.
 2. **Receipt-centric evidence discipline** — every task ends in a receipt
    with acceptance-by-acceptance verification, test output, self-eval rubric
    scores, and known limitations. Receipts are the single source for PR
