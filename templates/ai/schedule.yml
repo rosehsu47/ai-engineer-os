@@ -18,8 +18,11 @@ quota_stop_threshold_pct: 80
 # 值得等），不會因 5h 高就停。設 0 停用。
 quota_wait_threshold_pct: 60
 quota_wait_recheck_minutes: 20
-# true = 每個 DONE_TASK 後開全新 session 獨立審查（多一次 session 成本）
-review_after_task: false
+# true = 每個 DONE_TASK 後開全新 session 獨立審查（每任務多 ~$1-2）。
+# 預設開：無人看管跑整個 backlog 時，自評分數需要第二雙眼睛驗證；
+# 想省成本的 repo 自行關閉。大型變更（>10 檔）不受此設定影響，
+# agent 立 REVIEW_REQUESTED 旗即強制審查。
+review_after_task: true
 claude_model: "sonnet"
 # 空白分隔的簡單 flags；值內不可含空白（supervisor 未加引號展開）
 extra_claude_flags: ""

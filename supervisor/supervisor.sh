@@ -411,6 +411,9 @@ run_doctor() {
       d_info "PAUSED 等待回答中：$(head -1 "$REPO/.ai/PAUSED" 2>/dev/null)（panel 或 /ai-answer 回覆）"
     fi
   fi
+  if [ -f "$REPO/.ai/REVIEW_REQUESTED" ]; then
+    d_info "REVIEW_REQUESTED 旗標存在（大型變更待審）——下次 supervisor 輪會強制跑 /review"
+  fi
   if [ -f "$SUP_DIR/lock" ]; then
     lpid=$(cat "$SUP_DIR/lock" 2>/dev/null || echo "")
     if [ -n "$lpid" ] && kill -0 "$lpid" 2>/dev/null; then
@@ -708,8 +711,12 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
         log "警告：回報 productive 但 checkpoint 未更新（協定違規），計失敗 $consecutive_failures/$MAX_FAIL"
       else
         consecutive_failures=0 net_retries=0
-        # 多 agent 審查輪：DONE_TASK 之後開全新 session 獨立審查（可選）
-        if [ "$REVIEW" = "true" ] && [ "$status_tok" = "DONE_TASK" ]; then
+        # 多 agent 審查輪：review_after_task 開啟時每個 DONE_TASK 跑；
+        # agent 立了 REVIEW_REQUESTED 旗（大型變更 >10 檔）則不論設定強制跑
+        want_review=0
+        [ "$REVIEW" = "true" ] && [ "$status_tok" = "DONE_TASK" ] && want_review=1
+        [ -f "$REPO/.ai/REVIEW_REQUESTED" ] && { want_review=1; log "REVIEW_REQUESTED 旗標存在（大型變更），強制審查輪"; }
+        if [ "$want_review" = 1 ]; then
           log "review 輪：開 fresh session 審查上一個任務"
           rout="$SUP_DIR/review-out.json"
           ( cd "$REPO"; exec claude -p "/review" --output-format json --model "$MODEL" $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS ) >"$rout" 2>>"$err"
@@ -717,6 +724,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
           total_cost=$(awk -v a="$total_cost" -v b="$rcost" 'BEGIN{printf "%.4f", a+b}')
           rline=$(extract_result < "$rout" | grep -oE 'AIOS_REVIEW: (PASS|FAIL)[^"]*' | tail -1)
           log "review 結果：${rline:-（無 AIOS_REVIEW 行——檢查 /review skill 是否已安裝）} cost=\$${rcost}"
+          rm -f "$REPO/.ai/REVIEW_REQUESTED"   # 旗標一次性，審完即清（supervisor 是 bash，不受 agent 的 rm deny 約束）
           # FAIL 時 reviewer 已把修正任務排進 backlog，下一輪 /work 自然接手
         fi
       fi
