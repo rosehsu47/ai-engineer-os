@@ -51,7 +51,8 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 - `max_iterations_per_run`（預設 10）、`max_consecutive_failures`（3）
 - 每輪 watchdog（預設 30 分鐘，macOS 無 timeout 用背景輪詢實作）
 - **成本熔斷**：累計每輪回報的 `total_cost_usd` 超過
-  `max_cost_per_run_usd`（預設 5）即停（訂閱制下數字是估算值，仍有效）
+  `max_cost_per_run_usd`（預設 20 ≈ 5-8 個任務，實測一個任務 $2-5）
+  即停（訂閱制下數字是估算值，仍有效）
 - **交叉驗證**：agent 回報有進展但 checkpoint mtime 沒動 → 當失敗計
   （防 agent 忘記協定空轉）
 - `.ai/STOP` 隨時手動煞車；所有輪次的原始輸出留在 `.ai/supervisor/`

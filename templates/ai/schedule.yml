@@ -8,7 +8,9 @@ sleep_between_iterations_seconds: 20
 rate_limit_fallback_sleep_minutes: 30
 network_backoff_base_seconds: 30
 network_backoff_max_seconds: 900
-max_cost_per_run_usd: 5
+# 實測基準（2026-07-17 kotoba）：一個中型任務 $2-5，預設 20 約可跑
+# 5-8 個任務；訂閱制下數字是 CLI 推估值，當相對量看
+max_cost_per_run_usd: 20
 # 硬門檻：只看 7d 額度用量，達此百分比即寫 .ai/STOP 煞車保個人額度
 # （7d 要等數天、不值得等；設 101 停用此檢查）
 quota_stop_threshold_pct: 80
