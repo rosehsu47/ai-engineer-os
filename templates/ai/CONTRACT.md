@@ -45,9 +45,12 @@
 以下全部成立才算完成一個任務：
 1. 任務的每一條 `acceptance` 都被滿足且可展示證據
 2. 測試指令通過（沒有測試基建的 repo：至少建置通過 + 手動驗證主流程）
-3. 自評 rubric 分數 ≥ 門檻（`.ai/rubrics/` 啟用時）
-4. Receipt 已寫入、checkpoint 歸 `idle`、任務移入 done.yaml
-5. 程式碼與紀錄各自 commit 完成
+3. `scripts/ai-verify.sh` 存在時必須執行且通過（`bash scripts/ai-verify.sh`），
+   輸出摘錄進 receipt 證據節——這是 repo 自己定義的煙霧測試，
+   headless 下唯一保證放行的端到端驗證入口
+4. 自評 rubric 分數 ≥ 門檻（`.ai/rubrics/` 啟用時）
+5. Receipt 已寫入、checkpoint 歸 `idle`、任務移入 done.yaml
+6. 程式碼與紀錄各自 commit 完成
 
 ## 6. 提交前儀式（每次 commit 前）
 

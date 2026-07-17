@@ -384,6 +384,12 @@ run_doctor() {
       d_info "找不到模板 settings.local.json（supervisor 被單獨複製出去？）——跳過 drift 檢查"
     fi
   fi
+  # 驗證腳本（可選慣例）
+  if [ -f "$REPO/scripts/ai-verify.sh" ]; then
+    d_ok "scripts/ai-verify.sh 存在（agent 的端到端驗證入口）"
+  else
+    d_info "scripts/ai-verify.sh 未安裝（可選）——agent 無法自行做 curl 級的端到端驗證，模板在 templates/scripts/"
+  fi
   # 目標 repo 的 skills
   miss=""
   for k in work review ai-task ai-answer ai-wrap; do

@@ -20,6 +20,7 @@
       "Bash(grep:*)",
       "Bash(mkdir:*)",
       "Bash(mv .ai/PAUSED .ai/PAUSED.consumed)",
+      "Bash(bash scripts/ai-verify.sh:*)",
       "Bash({{TEST_COMMAND}}:*)",
       "Bash({{BUILD_COMMAND}}:*)"
     ],
