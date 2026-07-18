@@ -52,12 +52,19 @@ type RepoState struct {
 	LastRunCost     string   `json:"last_run_cost,omitempty"`
 	LastRunAt       string   `json:"last_run_at,omitempty"`
 	Receipts        []string `json:"receipts"` // 最近 3 張 "日期/NNN [status] [human]? title"
+	DashboardReady  bool     `json:"dashboard_ready"` // 卡片要不要顯示「儀表板」連結
 }
+
+// dashboardScriptPath：supervisor/dashboard.sh 的路徑（-dashboard-script 設定）。
+// 空字串 = 不重算，/dashboard 只讀既有的 .ai/reports/dashboard.html（若存在）。
+var dashboardScriptPath string
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "監聽位址（僅限本機）")
 	reposFlag := flag.String("repos", "", "逗號分隔的 repo 路徑；空 = 讀 ~/.aios-repos")
+	dashboardScript := flag.String("dashboard-script", "", "supervisor/dashboard.sh 的絕對路徑；設定後點卡片上的儀表板連結會先重算（1 分鐘內的快照直接沿用），不設就只讀既有的 .ai/reports/dashboard.html")
 	flag.Parse()
+	dashboardScriptPath = *dashboardScript
 
 	if len(loadRepos(*reposFlag)) == 0 {
 		fmt.Fprintln(os.Stderr, "沒有 repo：用 -repos /a,/b 或在 ~/.aios-repos 一行一個路徑")
@@ -88,6 +95,35 @@ func main() {
 	http.HandleFunc("/api/usage", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(getUsage(currentRepos()))
+	})
+	http.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		out := filepath.Join(repo, ".ai", "reports", "dashboard.html")
+		if dashboardScriptPath != "" {
+			stale := true
+			if info, err := os.Stat(out); err == nil && time.Since(info.ModTime()) < 60*time.Second {
+				stale = false
+			}
+			if stale {
+				cmd := exec.Command(dashboardScriptPath, "--repo", repo)
+				if err := cmd.Run(); err != nil {
+					if _, statErr := os.Stat(out); statErr != nil {
+						http.Error(w, "dashboard.sh 執行失敗且無舊快照可用："+err.Error(), 500)
+						return
+					}
+					// 重算失敗但有舊檔——照樣送出舊快照，不擋畫面
+				}
+			}
+		}
+		if _, err := os.Stat(out); err != nil {
+			http.Error(w, "尚未產生 dashboard.html——手動跑一次：\nsupervisor/dashboard.sh --repo "+repo, 404)
+			return
+		}
+		http.ServeFile(w, r, out)
 	})
 	http.HandleFunc("/api/answer", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -243,6 +279,9 @@ func readRepo(path string) RepoState {
 	}
 	// receipts（最近 3）
 	s.Receipts = recentReceipts(filepath.Join(ai, "receipts"), 3)
+	// 儀表板：有舊快照可讀，或設了 -dashboard-script 可以現算，就給連結
+	_, err = os.Stat(filepath.Join(ai, "reports", "dashboard.html"))
+	s.DashboardReady = err == nil || dashboardScriptPath != ""
 	return s
 }
 
