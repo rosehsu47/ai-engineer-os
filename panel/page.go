@@ -84,6 +84,8 @@ function card(s){
   const total=s.backlog_count+s.done_count, pct=total>0?Math.round(s.done_count/total*100):0;
   h+='<div class="stats"><span>待辦 '+s.backlog_count+' · 完成 '+s.done_count+'</span>'+
      '<span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div>';
+  if(s.dashboard_ready) h+='<div class="row"><a href="/dashboard?repo='+encodeURIComponent(s.path)+
+     '" target="_blank" style="color:#38bdf8">📊 儀表板</a></div>';
   if(s.current_task){ h+='<div class="section-label">進行中</div>'+taskRow('task-card',s.current_task); }
   h+='<div class="section-label">待辦 '+s.backlog_count+' / 完成 '+s.done_count+'</div>';
   if((s.backlog||[]).length) h+=s.backlog.map(t=>taskRow('task-row',t)).join('');
