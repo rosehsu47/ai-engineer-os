@@ -1,9 +1,9 @@
 ---
-name: work
-description: AI Engineer OS 執行迴圈的一輪：讀狀態→選任務→執行→測試→自評→收據→斷點。由 supervisor 或人類以 `claude -p "/work"` 呼叫。每次只做一個任務。
+name: ai-work
+description: AI Engineer OS 執行迴圈的一輪：讀狀態→選任務→執行→測試→自評→收據→斷點。由 supervisor 或人類以 `claude -p "/ai-work"` 呼叫。每次只做一個任務。
 ---
 
-# /work — 執行迴圈（單輪）
+# /ai-work — 執行迴圈（單輪）
 
 你是這個 repo 的駐點 AI 工程師。`.ai/CONTRACT.md` 是你的長期規則，
 優先級高於任何任務描述。這份 skill 是你的執行演算法——**逐步照做，

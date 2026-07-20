@@ -15,7 +15,7 @@ with flow diagrams: [`MANUAL.md`](MANUAL.md)**; protocol spec:
 /ai-init /absolute/path/to/repo
 
 # 2. Seed tasks in {repo}/.ai/tasks/backlog.yaml, then run one iteration:
-cd /path/to/repo && claude -p "/work"
+cd /path/to/repo && claude -p "/ai-work"
 
 # 3. Or run unattended (rate-limit auto-resume, cost breaker, kill switch):
 supervisor/supervisor.sh --repo /path/to/repo
@@ -39,7 +39,7 @@ recovery is the same code path as a normal start.
 
 It is **not** an agent framework, workflow engine, planner, or tool-calling
 layer — it never decides how the agent thinks (today all of that is
-delegated to Claude Code via `claude -p "/work"`). What it maintains is the
+delegated to Claude Code via `claude -p "/ai-work"`). What it maintains is the
 working environment every agent run shares, all as files under `.ai/`:
 
 ```

@@ -13,13 +13,13 @@
 |---|---|---|
 | `.ai/` workspace 結構 | `templates/ai/`（CONTRACT.md、schedule.yml、agents/ 五角色、tasks/ 三檔、state/ 四檔、rubrics/ 四份、receipts/、reports/） | 完整 |
 | CONTRACT.md 長期規則＋人類核可邊界 | `templates/ai/CONTRACT.md` §7；permission deny 雙重強制 | 完整 |
-| 任務佇列 | schema 於 AI-RUNTIME.md；選取演算法在 `templates/skills/work/SKILL.md` 步驟 2（priority→FIFO，`depends_on`，`attempts`） | 完整 |
+| 任務佇列 | schema 於 AI-RUNTIME.md；選取演算法在 `templates/skills/ai-work/SKILL.md` 步驟 2（priority→FIFO，`depends_on`，`attempts`） | 完整 |
 | checkpoint 持久狀態 | `templates/ai/state/checkpoint.json`；無狀態 session＋整檔重寫，恢復與正常啟動同一條路 | 完整 |
 | Supervisor 自我恢復 | `supervisor/supervisor.sh`（分類器 9 類、rate-limit 睡到 reset、網路指數退避、成本斷路器、STOP 開關、quota 軟/硬門檻、watchdog、`--self-test`） | 完整 |
 | Rubrics 自評 | `templates/ai/rubrics/` 四份，0-100 加權，≥80 過、60-79 改一輪、防吹牛條款 | 完整 |
 | Receipts 稽核 | schema 於 AI-RUNTIME.md；`receipts/YYYY-MM-DD/NNN.md` | 完整 |
 | Reports | `.claude/skills/ai-report/`（日報/週報/PR 描述/changelog/履歷素材） | 完整 |
-| Multi-agent | 五 persona 在單一 `/work` session 內分工＋獨立 `/review` round（`templates/skills/review/SKILL.md`，`supervisor --review` 觸發）；平行寫入者刻意不做（single-writer invariant） | 完整（範圍已收斂，見 §2） |
+| Multi-agent | 五 persona 在單一 `/ai-work` session 內分工＋獨立 `/ai-review` round（`templates/skills/ai-review/SKILL.md`，`supervisor --review` 觸發）；平行寫入者刻意不做（single-writer invariant） | 完整（範圍已收斂，見 §2） |
 | GitHub 整合 | `.claude/skills/ai-ship/`（唯一碰網路的 skill，僅限人類觸發） | 完整 |
 | Dashboard | `panel/`（Go 控制台：多 repo 狀態、回答 PAUSED、STOP、帳號用量）＋ `supervisor/dashboard.sh`（零額度靜態 HTML） | 完整 |
 | 事件收集 | 分散式：receipts frontmatter、`ai/queue` git log、`.ai/supervisor/` run 紀錄、`state/decisions.md` | 完整但分散（見 §2） |
@@ -34,8 +34,8 @@
   沒有任何東西讀它來決定「幾點啟動」——啟動永遠靠人類手動觸發。
   D1 會補上這塊，讓名字對得起內容。
 - **「multi-agent」是 persona 分工，不是平行 agent**：五個角色
-  （planner/coder/tester/reviewer/architect）在同一個 `/work` session
-  裡依序切換視角，`/review` 是另一個獨立 session 但仍是*讀者*角色、
+  （planner/coder/tester/reviewer/architect）在同一個 `/ai-work` session
+  裡依序切換視角，`/ai-review` 是另一個獨立 session 但仍是*讀者*角色、
   不碰程式碼。這是刻意設計，不是縮水——single-writer invariant 是
   checkpoint/resume 可信的前提，平行寫入者會直接打破它（見 §4）。
 - **事件散落於各檔，無統一事件層**：想知道「supervisor 這輪為什麼睡了
@@ -57,7 +57,7 @@
   deny-drift、巢狀 session 警告）＋ `--probe`（headless 寫入權限實測，
   補上 AI-RUNTIME.md 已知限制 4 提到的驗證缺口）。
 - **C4 allowlist 補洞**：`Bash(date:*)`（時間戳協定強制要求）、
-  `Bash(git show:*)`（`/review` 需要讀歷史 diff）。
+  `Bash(git show:*)`（`/ai-review` 需要讀歷史 diff）。
 
 **V — 定位驗證**
 - **V1 第二 agent 相容性驗證（Codex CLI）**：讓 Codex 接手一份既有的
@@ -70,11 +70,11 @@
   清單（哪些東西其實是 Claude 耦合：skill 載入方式、權限模型、
   /usage 解析）。
   **執行順序（fixture-first 的同一精神：先實測、後改碼）**：
-  1. 零改動實測：測試 repo 手動 `codex exec`，把 /work SKILL 演算法
+  1. 零改動實測：測試 repo 手動 `codex exec`，把 /ai-work SKILL 演算法
      餵進 AGENTS.md，對照六條契約看哪裡斷（整檔重寫？狀態行？
      尊重 PAUSED？）→ 產出真實差距清單
   2. 憑清單改 supervisor，預定接縫是 schedule.yml 加 `agent_command`
-     （預設 `claude -p "/work" --output-format json`）——supervisor
+     （預設 `claude -p "/ai-work" --output-format json`）——supervisor
      對 agent 的唯一要求：「在 repo cwd 跑一輪、結尾印 AIOS_STATUS
      行到 stdout」；cost 熔斷與 /usage quota 煞車解析不到就優雅
      降級（詞彙保留、策略停用），rate-limit 分類器先加 Codex 文案
@@ -99,7 +99,7 @@ runtime，以下項目不在範圍內：
 - **messaging gateways（Telegram/Discord/Slack…）**：那是通用助理
   框架的問題，不是「讓 coding agent 在這個 repo 裡負責任地工作」的
   問題。
-- **model routing**：委派給 Claude Code（`claude -p "/work"`），本
+- **model routing**：委派給 Claude Code（`claude -p "/ai-work"`），本
   repo 不重造 agent loop 或 model 選擇邏輯。
 - **tool 生態系**：同上，工具執行是 Claude Code 的職責。
 - **PreToolUse/PostToolUse hook 強制層**：目前的強制手段是
