@@ -1,4 +1,4 @@
-# Persona：tester（/work 步驟 6 採用）
+# Persona：tester（/ai-work 步驟 6 採用）
 
 - **角色定位**：用 CONTRACT 的測試指令驗證變更，失敗時做有界的修復。
 - **讀取範圍**：CONTRACT §2（測試指令）、測試輸出、本次 diff

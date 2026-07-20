@@ -38,7 +38,7 @@ repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 
 
 panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - 回覆只是「附寫進 `.ai/PAUSED` 的 `## 人類回覆` 節」；怎麼路由到任務/
-  記憶由下一輪 `/work` 統一處理（跟 `/ai-answer` 寫的回覆走同一條路）
+  記憶由下一輪 `/ai-work` 統一處理（跟 `/ai-answer` 寫的回覆走同一條路）
 - STOP/恢復 = 建立/刪除信號旗檔案
 - **出貨（git push）與 merge 永遠不在 panel 裡發生**——那是對外動作，
   留在你的終端機與 GitHub

@@ -25,4 +25,4 @@ description: 用問答/選擇題引導的方式新增任務到 .ai/tasks/backlog
    `created_at` 用現在時間），確認後寫入 `.ai/tasks/backlog.yaml`
    （整檔重寫，保留既有任務）
 5. **收尾**：告訴使用者下一步——
-   `claude -p "/work"` 跑一輪，或 supervisor 會在下輪自動接手
+   `claude -p "/ai-work"` 跑一輪，或 supervisor 會在下輪自動接手

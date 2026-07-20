@@ -1,6 +1,6 @@
 # supervisor.sh — 無人監督迴圈
 
-讓 agent 在你離開電腦後持續工作：每輪開一個全新的 `claude -p "/work"`
+讓 agent 在你離開電腦後持續工作：每輪開一個全新的 `claude -p "/ai-work"`
 session，讀 `AIOS_STATUS` 分類結果，出錯時按分類表復原。
 協定與 schema 見 [`../AI-RUNTIME.md`](../AI-RUNTIME.md)。
 
@@ -43,7 +43,7 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `ECONNRESET / 529 / fetch failed / temporarily unavailable`（含權限分類器暫時不可用）等 | 網路 | 指數退避 30s→900s，最多 6 次 |
 | exit 124/137/143（watchdog 砍掉） | 逾時 | 失敗 +1，重啟 |
 | 其他非零 exit / `is_error` | 未知崩潰 | 失敗 +1，睡 60s 重試 |
-| exit 0 但沒有 AIOS_STATUS 行 | 協定漂移 | 警告，累計 3 次退出（檢查 /work skill 是否還在目標 repo） |
+| exit 0 但沒有 AIOS_STATUS 行 | 協定漂移 | 警告，累計 3 次退出（檢查 /ai-work skill 是否還在目標 repo） |
 
 ## 安全閥
 

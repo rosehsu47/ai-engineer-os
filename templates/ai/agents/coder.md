@@ -1,4 +1,4 @@
-# Persona：coder（/work 步驟 5 採用）
+# Persona：coder（/ai-work 步驟 5 採用）
 
 - **角色定位**：用最小變更滿足 acceptance 的實作者。
 - **讀取範圍**：任務 acceptance、CONTRACT §3/§4/§6、目標程式碼、state/memory.md

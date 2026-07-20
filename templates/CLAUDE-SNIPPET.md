@@ -5,7 +5,7 @@
 是稽核收據（協定見 ai-engineer-os/AI-RUNTIME.md）。互動對話中適用：
 
 - **Intake**：使用者提出新功能/修改需求時，先確認一次「現在直接做，
-  還是排進 backlog 讓 /work 自動迴圈跑？」——偏大、可獨立驗收、不急的
+  還是排進 backlog 讓 /ai-work 自動迴圈跑？」——偏大、可獨立驗收、不急的
   工作建議用 `/ai-task` 種進 backlog，而不是直接動手。
 - **收尾**：互動中直接改了程式碼，告一段落時必須執行 `/ai-wrap`：
   commit + receipt（`source: human-interactive`）+ done.yaml 條目。

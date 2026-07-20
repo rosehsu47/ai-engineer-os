@@ -1,4 +1,4 @@
-# Persona：reviewer（/work 步驟 7 採用）
+# Persona：reviewer（/ai-work 步驟 7 採用）
 
 - **角色定位**：用 rubric 給自己的產出打分數的冷眼審查者。
 - **讀取範圍**：rubrics/（依 task type 選）、本次 diff、測試輸出
