@@ -42,12 +42,17 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  code{background:#334155;padding:2px 6px;border-radius:5px;font-size:12px;user-select:all}
  .ship{background:#064e3b55;border:1px solid #10b98155;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px}
  .dirty{background:#78350f33;border:1px solid #b4530966;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px;color:#fbbf24}
+ .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:#1e293b;color:#38bdf8;flex-shrink:0;margin-left:auto}
+ .icon-btn:hover{background:#334155;color:#7dd3fc}
+ .icon-btn svg{width:14px;height:14px}
 </style></head><body>
 <h1>🤖 AI Engineer OS 控制台 <span class="muted" id="ts"></span> <span class="muted" id="usage"></span></h1>
 <p class="muted">panel 只讀寫協定檔（回答/煞車）；出貨與 merge 永遠在你的終端機。每 5 秒自動更新。</p>
 <div class="grid" id="grid"></div>
 <script>
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Feather 風格線條 icon（MIT），不外連字型/CDN——inline SVG 保持零外部依賴
+const ICON_DASHBOARD='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>';
 async function post(url, data){ const b=new URLSearchParams(data);
   const r=await fetch(url,{method:'POST',body:b}); if(!r.ok) alert(await r.text()); refresh(); }
 function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
@@ -79,13 +84,13 @@ function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S
 function card(s){
   if(s.missing) return '<div class="repo"><h2><span class="name">'+esc(s.name)+'</span></h2><p class="muted">尚未 /ai-init</p></div>';
   let h='<div class="repo"><h2><span class="dot '+dot(s)+'"></span><span class="name">'+esc(s.name)+'</span>'+
-    '<span class="meta">'+metaLine(s)+'</span></h2>';
+    '<span class="meta">'+metaLine(s)+'</span>'+
+    (s.dashboard_ready?'<a class="icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
+     '" target="_blank" title="儀表板">'+ICON_DASHBOARD+'</a>':'')+'</h2>';
   if(s.last_run_status) h+='<div class="row">上輪 '+esc(s.last_run_status)+' $'+esc(s.last_run_cost||'0')+'</div>';
   const total=s.backlog_count+s.done_count, pct=total>0?Math.round(s.done_count/total*100):0;
   h+='<div class="stats"><span>待辦 '+s.backlog_count+' · 完成 '+s.done_count+'</span>'+
      '<span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div>';
-  if(s.dashboard_ready) h+='<div class="row"><a href="/dashboard?repo='+encodeURIComponent(s.path)+
-     '" target="_blank" style="color:#38bdf8">📊 儀表板</a></div>';
   if(s.current_task){ h+='<div class="section-label">進行中</div>'+taskRow('task-card',s.current_task); }
   h+='<div class="section-label">待辦 '+s.backlog_count+' / 完成 '+s.done_count+'</div>';
   if((s.backlog||[]).length) h+=s.backlog.map(t=>taskRow('task-row',t)).join('');
