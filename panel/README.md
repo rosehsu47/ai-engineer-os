@@ -29,10 +29,10 @@ repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 
 - **❓ 問答區**：agent 的 PAUSED 問題直接顯示，textarea 送出回覆
 - **🚢 出貨提示**：ai/queue 領先幾個 commit＋可複製的 `/ai-ship` 指令
 - **STOP 煞車／解除**按鈕
-- **📊 儀表板**連結（`.ai/reports/dashboard.html` 存在，或有帶
-  `-dashboard-script` 時才出現）：開新分頁看 `dashboard.sh` 渲染的任務
-  統計/收據表/git 事件。有帶 `-dashboard-script` 時，點開若快照超過
-  1 分鐘會先重算；沒帶就只讀既有檔案，不會自動更新
+- **📊 儀表板**圖示按鈕（卡片標題列右側，`.ai/reports/dashboard.html`
+  存在、或有帶 `-dashboard-script` 時才出現）：開新分頁看 `dashboard.sh`
+  渲染的任務統計/收據表/git 事件。有帶 `-dashboard-script` 時，點開若
+  快照超過 1 分鐘會先重算；沒帶就只讀既有檔案，不會自動更新
 
 ## 設計原則（為什麼它做不了更多）
 
