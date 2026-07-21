@@ -212,7 +212,7 @@ quota_check() {
       stop)
         reason="7d 已用 ${week:-?}%（硬門檻 ${stop_t}%，5h 已用 ${sess:-?}%）"
         log "quota 煞車：$reason —— 保留給個人使用"
-        printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔或按 panel 的「解除煞車」\n' \
+        printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔、按 panel 的「解除煞車」，或下次跑加 --ignore-quota（會自動清掉這個檔）\n' \
           "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
         END_REASON=quota_stop; emit_event quota_stop "$reason"
         return 1 ;;
@@ -638,6 +638,14 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG ignore_quota=$IGNORE_QUOTA"
   echo "  cmd: (cd $REPO && claude -p \"/ai-work\" --output-format json --model $MODEL $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS)"
   exit 0
+fi
+
+# --ignore-quota 只清「quota_check 自己寫的」STOP（第一行以 "quota " 開頭）——
+# 人類手動 touch 或其他原因寫的 STOP 一律不動，避免無關的煞車被意外清掉
+if [ "$IGNORE_QUOTA" = 1 ] && [ -f "$REPO/.ai/STOP" ] \
+   && head -1 "$REPO/.ai/STOP" 2>/dev/null | grep -q '^quota '; then
+  log "--ignore-quota：清掉 quota 煞車寫的 .ai/STOP（$(head -1 "$REPO/.ai/STOP")）"
+  rm -f "$REPO/.ai/STOP"
 fi
 
 # ---------- 主迴圈 ----------
