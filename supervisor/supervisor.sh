@@ -8,7 +8,7 @@
 # 用法：
 #   supervisor.sh --repo /path/to/repo [--once] [--max-iterations N]
 #                 [--max-failures N] [--model M] [--claude-flags "..."]
-#                 [--yolo] [--wait-on-pause] [--dry-run] [--verbose]
+#                 [--yolo] [--wait-on-pause] [--ignore-quota] [--dry-run] [--verbose]
 #   supervisor.sh --self-test        # 零額度：用內嵌 fixtures 驗證分類器
 #   supervisor.sh --doctor --repo X  # 零額度環境體檢（首跑前在一般終端機執行）
 #   supervisor.sh --doctor --probe --repo X  # 體檢＋headless 寫入實測（花少量額度）
@@ -20,7 +20,7 @@ set -u
 
 # ---------- 參數與預設 ----------
 REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
-DOCTOR=0 PROBE=0
+DOCTOR=0 PROBE=0 IGNORE_QUOTA=0
 MAX_ITER="" MAX_FAIL="" MODEL="" EXTRA_FLAGS=""
 
 while [ $# -gt 0 ]; do
@@ -34,6 +34,7 @@ while [ $# -gt 0 ]; do
     --yolo) YOLO=1; shift ;;
     --review) REVIEW=true; shift ;;
     --wait-on-pause) WAIT_ON_PAUSE=1; shift ;;
+    --ignore-quota) IGNORE_QUOTA=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --self-test) SELF_TEST=1; shift ;;
     --doctor) DOCTOR=1; shift ;;
@@ -190,6 +191,11 @@ quota_decide() {
 # 不會中途斷頭浪費重讀。
 quota_check() {
   local stop_t wait_t recheck out result sess week verdict reason waited_min=0
+  if [ "$IGNORE_QUOTA" = 1 ]; then
+    log "quota 檢查已停用（--ignore-quota，本輪不查用量、不寫 STOP）"
+    emit_event quota_ignored
+    return 0
+  fi
   stop_t=$(sched_get quota_stop_threshold_pct 80)
   wait_t=$(sched_get quota_wait_threshold_pct 60)
   recheck=$(sched_get quota_wait_recheck_minutes 20)
@@ -629,7 +635,7 @@ trap 'rm -f "$LOCK"' EXIT
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run：repo=$REPO model=$MODEL max_iter=$MAX_ITER max_fail=$MAX_FAIL"
-  echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG"
+  echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG ignore_quota=$IGNORE_QUOTA"
   echo "  cmd: (cd $REPO && claude -p \"/ai-work\" --output-format json --model $MODEL $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS)"
   exit 0
 fi

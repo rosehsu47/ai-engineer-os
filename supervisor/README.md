@@ -24,6 +24,7 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--yolo` | 用 `--dangerously-skip-permissions`（信任的 repo 才用；永不自動啟用） |
 | `--review` | 每個 DONE_TASK 後開全新 session 獨立審查（= schedule 的 `review_after_task`） |
 | `--wait-on-pause` | PAUSED 時每 5 分鐘輪詢而不是退出 |
+| `--ignore-quota` | 這次跑不查 5h/7d 用量，也不寫 `.ai/STOP`——只影響本次呼叫，不改 `schedule.yml`。想有意衝額度（例如訂閱快到期）時用，其餘安全閥（cost breaker、max-iterations、連續失敗）照常生效 |
 | `--dry-run` | 印出將執行的設定與指令，不花額度 |
 | `--self-test` | 零額度：用內嵌 fixtures 驗證錯誤分類器與睡眠計算 |
 | `--doctor` | 零額度環境體檢：`.ai/` 樹、CONTRACT `{{` 殘留、settings allow/deny 對模板的 drift、skills 齊全、狀態檔結構 lint、旗標狀態。**在一般終端機跑**（巢狀 Claude session 會讓權限結果失真，doctor 會自己警告） |
