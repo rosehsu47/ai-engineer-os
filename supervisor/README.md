@@ -95,7 +95,9 @@ open /path/to/repo/.ai/reports/dashboard.html
 
 從 `.ai/`（checkpoint、任務佇列、receipts frontmatter、supervisor 狀態、
 `ai/queue` 的 git log）渲染單檔 HTML：任務統計、收據表（含自評分數與
-獨立審查判定）、git 事件。純 bash/awk，不呼叫任何 LLM。
+獨立審查判定）、git 事件。純 bash/awk，不呼叫任何 LLM。收據列可點開
+看完整內文（做了什麼/測試/自評/未盡事項），純 CSS/inline JS 展開，
+不額外打任何請求。
 
 ## 停滯了怎麼辦（recovery SOP）
 
