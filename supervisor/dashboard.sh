@@ -40,7 +40,7 @@ stop="🟢 執行中/待命"
 [ -f "$REPO/.ai/STOP" ] && stop="🔴 STOP（手動煞車中）"
 [ -f "$REPO/.ai/PAUSED" ] && stop="🟡 PAUSED（等待人類：$(head -1 "$REPO/.ai/PAUSED" 2>/dev/null | esc)）"
 
-# receipts 表（最近 15 張，讀 frontmatter）
+# receipts 表（最近 15 張，讀 frontmatter；每列可點開看完整內文）
 receipt_rows=$(
   find "$REPO/.ai/receipts" -name '*.md' -type f 2>/dev/null | sort -r | head -15 | while read -r f; do
     fm=$(awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$f")
@@ -51,9 +51,13 @@ receipt_rows=$(
     review="—"; grep -q '## 獨立審查' "$f" && review=$(grep -A2 '## 獨立審查' "$f" | grep -oE 'PASS|FAIL' | head -1)
     # case pattern 加前括號：在 $() 內未配對的 ')' 會讓 bash 解析錯亂
     badge="s-other"; case "$st" in (done) badge="s-done";; (failed|blocked) badge="s-bad";; (partial|paused) badge="s-warn";; esac
-    printf '<tr><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
-      "$(basename "$(dirname "$f")")/$(basename "$f" .md)" \
+    rid="$(basename "$(dirname "$f")")/$(basename "$f" .md)"
+    anchor="r-$(printf '%s' "$rid" | tr '/' '-')"
+    body=$(awk '/^---$/{n++; next} n>=2{print}' "$f" | esc)
+    printf '<tr class="receipt-row" onclick="toggleDetail('"'"'%s'"'"')"><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
+      "$anchor" "$rid" \
       "$(printf '%s' "$title" | esc)" "$badge" "$st" "${score:-—}" "$review" "${tests:-—}" "${com:-—}"
+    printf '<tr class="detail" id="%s"><td colspan="7"><pre>%s</pre></td></tr>\n' "$anchor" "$body"
   done
 )
 
@@ -99,6 +103,11 @@ cat > "$OUT" <<HTML
   .badge{padding:1px 8px;border-radius:99px;font-size:12px}
   .s-done{background:#065f46} .s-bad{background:#7f1d1d} .s-warn{background:#78350f} .s-other{background:#334155}
   .muted{color:#64748b;font-size:12px}
+  .receipt-row{cursor:pointer} .receipt-row:hover{background:#1e293b}
+  .receipt-row td:first-child::before{content:'▸ ';color:#64748b}
+  .receipt-row.open td:first-child::before{content:'▾ '}
+  tr.detail{display:none} tr.detail.open{display:table-row}
+  tr.detail pre{white-space:pre-wrap;word-break:break-word;font-size:12.5px;line-height:1.6;margin:4px 0;max-height:520px;overflow-y:auto}
 </style></head><body>
 <h1>🤖 AI Engineer OS — $(basename "$REPO")</h1>
 <p class="muted">狀態：$stop ｜ 產生於 $(date '+%Y-%m-%d %H:%M')（重新產生：\`dashboard.sh --repo ...\`）</p>
@@ -120,6 +129,14 @@ ${git_rows:-<tr><td colspan=2 class=muted>ai/queue 分支尚無 commit</td></tr>
 <h2>⚙️ Supervisor 事件（events.jsonl 最近 10）</h2>
 <table><tr><th>時間</th><th>事件</th><th>輪</th><th>細節</th></tr>
 ${event_rows:-<tr><td colspan=4 class=muted>還沒有 loop 事件</td></tr>}</table>
+<script>
+function toggleDetail(id){
+  var d=document.getElementById(id);
+  if(!d) return;
+  d.classList.toggle('open');
+  if(d.previousElementSibling) d.previousElementSibling.classList.toggle('open');
+}
+</script>
 </body></html>
 HTML
 echo "dashboard: $OUT"
