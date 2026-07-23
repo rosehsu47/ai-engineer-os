@@ -42,7 +42,8 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  code{background:#334155;padding:2px 6px;border-radius:5px;font-size:12px;user-select:all}
  .ship{background:#064e3b55;border:1px solid #10b98155;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px}
  .dirty{background:#78350f33;border:1px solid #b4530966;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12px;color:#fbbf24}
- .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:#1e293b;color:#38bdf8;flex-shrink:0;margin-left:auto}
+ .icon-group{display:flex;align-items:center;gap:6px;margin-left:auto}
+ .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:#1e293b;color:#38bdf8;flex-shrink:0}
  .icon-btn:hover{background:#334155;color:#7dd3fc}
  .icon-btn svg{width:14px;height:14px}
 </style></head><body>
@@ -53,6 +54,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Feather 風格線條 icon（MIT），不外連字型/CDN——inline SVG 保持零外部依賴
 const ICON_DASHBOARD='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>';
+const ICON_OPEN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>';
 async function post(url, data){ const b=new URLSearchParams(data);
   const r=await fetch(url,{method:'POST',body:b}); if(!r.ok) alert(await r.text()); refresh(); }
 function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
@@ -85,8 +87,12 @@ function card(s){
   if(s.missing) return '<div class="repo"><h2><span class="name">'+esc(s.name)+'</span></h2><p class="muted">尚未 /ai-init</p></div>';
   let h='<div class="repo"><h2><span class="dot '+dot(s)+'"></span><span class="name">'+esc(s.name)+'</span>'+
     '<span class="meta">'+metaLine(s)+'</span>'+
-    (s.dashboard_ready?'<a class="icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
-     '" target="_blank" title="儀表板">'+ICON_DASHBOARD+'</a>':'')+'</h2>';
+    ((s.dashboard_ready||s.dev_url)?'<span class="icon-group">'+
+      (s.dashboard_ready?'<a class="icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
+       '" target="_blank" title="儀表板">'+ICON_DASHBOARD+'</a>':'')+
+      (s.dev_url?'<a class="icon-btn" href="'+esc(s.dev_url)+
+       '" target="_blank" title="'+esc(s.dev_url)+'">'+ICON_OPEN+'</a>':'')+
+     '</span>':'')+'</h2>';
   if(s.last_run_status) h+='<div class="row">上輪 '+esc(s.last_run_status)+' $'+esc(s.last_run_cost||'0')+'</div>';
   const total=s.backlog_count+s.done_count, pct=total>0?Math.round(s.done_count/total*100):0;
   h+='<div class="stats"><span>待辦 '+s.backlog_count+' · 完成 '+s.done_count+'</span>'+

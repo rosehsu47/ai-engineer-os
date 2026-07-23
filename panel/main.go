@@ -53,6 +53,7 @@ type RepoState struct {
 	LastRunAt       string   `json:"last_run_at,omitempty"`
 	Receipts        []string `json:"receipts"` // 最近 3 張 "日期/NNN [status] [human]? title"
 	DashboardReady  bool     `json:"dashboard_ready"` // 卡片要不要顯示「儀表板」連結
+	DevURL          string   `json:"dev_url,omitempty"` // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
 }
 
 // dashboardScriptPath：supervisor/dashboard.sh 的路徑（-dashboard-script 設定）。
@@ -85,9 +86,10 @@ func main() {
 	})
 	http.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		repos := currentRepos()
+		devURLs := loadDevURLs(*reposFlag)
 		states := make([]RepoState, 0, len(repos))
 		for _, p := range repos {
-			states = append(states, readRepo(p))
+			states = append(states, readRepo(p, devURLs[p]))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(states)
@@ -199,7 +201,37 @@ func loadRepos(flagVal string) []string {
 	for _, r := range raw {
 		r = strings.TrimSpace(r)
 		if r != "" && !strings.HasPrefix(r, "#") {
-			out = append(out, filepath.Clean(r))
+			out = append(out, filepath.Clean(strings.Fields(r)[0]))
+		}
+	}
+	return out
+}
+
+// loadDevURLs 讀 ~/.aios-repos 每行的第二欄（空白分隔，可選）：本機 dev
+// server 網址，純人工維護，agent 不讀不寫、不是協定檔。格式：
+// `{path} {url}`，例如 `/repo/a http://localhost:5173`。
+// -repos flag 給的清單不支援這欄（CLI 用法維持簡單，回傳空 map）。
+func loadDevURLs(flagVal string) map[string]string {
+	out := map[string]string{}
+	if flagVal != "" {
+		return out
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".aios-repos"))
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) > 1 {
+			out[filepath.Clean(fields[0])] = fields[1]
 		}
 	}
 	return out
@@ -216,8 +248,8 @@ func allowed(repos []string, p string) bool {
 
 // ---------- 讀取協定檔（容錯優先：壞檔回空值，不 panic） ----------
 
-func readRepo(path string) RepoState {
-	s := RepoState{Name: filepath.Base(path), Path: path}
+func readRepo(path, devURL string) RepoState {
+	s := RepoState{Name: filepath.Base(path), Path: path, DevURL: devURL}
 	ai := filepath.Join(path, ".ai")
 	if _, err := os.Stat(ai); err != nil {
 		s.Missing = true

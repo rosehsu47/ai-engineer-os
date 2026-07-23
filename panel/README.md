@@ -20,6 +20,16 @@ aios-panel -repos /path/a,/path/b \
 repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 進去
 （/ai-init 收尾會自動做）5 秒內卡片就出現，panel 不用重啟。
 
+每行可選填第二欄（空白分隔）：這個 repo 本機 dev server 的網址，例如：
+
+```
+/path/a http://localhost:5173
+```
+
+有填的話卡片標題列會多一個 ↗ 圖示，點開新分頁直接開那個網址。純人工
+維護的清單欄位，不是 `.ai/` 協定檔，agent 不會讀寫它；`/ai-init` 訪談時
+會問一次，之後想改就直接編輯 `~/.aios-repos`。
+
 ## 畫面上有什麼（每 5 秒自動更新）
 
 每個 repo 一張卡：
