@@ -1,9 +1,8 @@
 {
-  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的白名單：Edit/Write 需明確允許（實測 headless -p 下 acceptEdits 不足以放行），Bash 逐指令白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線（優先權高於 allow，且無法用更具體的 allow 開例外）：契約與權限設定本身不可被 agent 修改。`mv .ai/PAUSED .ai/PAUSED.consumed` 是精確全字串比對的窄放行——/ai-work 協定要求消化完人類回覆後清掉 PAUSED 旗標，但 rm 被硬 deny 擋死，改用不在 deny 名單裡的 mv 繞開，範圍精確到這一個指令，不開放其他 mv 用法。",
+  "_comment": "由 /ai-init 併入目標 repo 的 .claude/settings.local.json。allow = headless 自主執行所需的白名單：Edit(**) 涵蓋所有檔案編輯工具（含 Write，實測 Claude Code 的權限比對只認 Edit(path) 規則——Write(path) 形式的規則不會被比對到，寫了也是死規則、只會在啟動時印警告，故不重複列 Write(**)），Bash 逐指令白名單（{{TEST_COMMAND}}/{{BUILD_COMMAND}} 由訪談填入）；deny = 硬防線（優先權高於 allow，且無法用更具體的 allow 開例外）：契約與權限設定本身不可被 agent 修改，同理只列 Edit(...) 即可涵蓋。`mv .ai/PAUSED .ai/PAUSED.consumed` 是精確全字串比對的窄放行——/ai-work 協定要求消化完人類回覆後清掉 PAUSED 旗標，但 rm 被硬 deny 擋死，改用不在 deny 名單裡的 mv 繞開，範圍精確到這一個指令，不開放其他 mv 用法。若某任務需要一次性的 Bash 指令（如專案初始 scaffold 用的 `npx create-next-app`），/ai-init 當下的白名單不會預先涵蓋——這類指令會在 headless 執行時被 Claude Code 自身的工具權限擋下並寫 PAUSED，需要人類另外把精確 scope 的規則加進目標 repo 的 settings.local.json（不要開放成 `Bash(npx:*)` 這種大範圍規則）。",
   "permissions": {
     "allow": [
       "Edit(**)",
-      "Write(**)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -28,11 +27,8 @@
       "Bash(git push:*)",
       "Bash(rm:*)",
       "Edit(.claude/**)",
-      "Write(.claude/**)",
       "Edit(.ai/CONTRACT.md)",
-      "Write(.ai/CONTRACT.md)",
       "Edit(.ai/schedule.yml)",
-      "Write(.ai/schedule.yml)",
       "Read(.env*)",
       "Edit(.env*)"
     ]
