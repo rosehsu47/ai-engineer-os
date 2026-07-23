@@ -276,16 +276,29 @@ func readRepo(path, devURL string) RepoState {
 	s.CurrentTask = firstTask(filepath.Join(ai, "tasks", "doing.yaml"))
 	s.Backlog, s.BacklogCount = taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 5)
 	_, s.DoneCount = taskList(filepath.Join(ai, "tasks", "done.yaml"), 0)
-	// PAUSED
+	// PAUSED：判斷「已回覆」不能只看子字串有沒有出現——agent 自己寫問題時
+	// 常會在建議選項裡提到「回覆『## 人類回覆』節」這種說明文字，也可能先
+	// 附上空白的 `## 人類回覆（請在此下作答）` 範本讓人類直接編輯檔案；
+	// 兩種情況子字串都存在，但都還沒真的被回覆。改成：只認「行首就是
+	// `## 人類回覆`」的標題行（排除引號裡提到它的說明句），取最後一個
+	// 這樣的標題（真正的回覆一定是後來附加、在檔案最尾端），再看它底下
+	// 是否有非空白內容——有內容才算真的回覆過。
 	if b, err := os.ReadFile(filepath.Join(ai, "PAUSED")); err == nil {
 		s.Paused = true
-		content := string(b)
-		s.PausedAnswered = strings.Contains(content, "## 人類回覆")
-		q := content
-		if i := strings.Index(content, "## 人類回覆"); i >= 0 {
-			q = content[:i]
+		lines := strings.Split(string(b), "\n")
+		headingIdx := -1
+		for i, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), "## 人類回覆") {
+				headingIdx = i
+			}
 		}
-		s.PausedQuestion = strings.TrimSpace(q)
+		if headingIdx >= 0 {
+			s.PausedAnswered = strings.TrimSpace(strings.Join(lines[headingIdx+1:], "\n")) != ""
+			s.PausedQuestion = strings.TrimSpace(strings.Join(lines[:headingIdx], "\n"))
+		} else {
+			s.PausedAnswered = false
+			s.PausedQuestion = strings.TrimSpace(string(b))
+		}
 	}
 	// last_run
 	if m := readJSON(filepath.Join(ai, "supervisor", "last_run.json")); m != nil {
