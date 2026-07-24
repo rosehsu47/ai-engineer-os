@@ -8,6 +8,10 @@
 //   唯一例外：claude 帳號用量（/api/usage）——帳號層級、不是協定檔，
 //   查一次要 spawn `claude -p "/usage"`（非零成本，~0.5s），所以刻意
 //   跟 5 秒的 state 輪詢分開：60 秒快取一次，且只查一次（不分 repo）。
+//   另一個例外：「可出貨」判斷背景跑 `git fetch origin`（唯讀、只更新
+//   remote-tracking ref，不碰本地分支/工作區）——GitHub 上 PR 合併後，
+//   不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
+//   每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
 //
 // 用法：
 //   go run ./panel -repos /path/a,/path/b        （或編譯後 aios-panel）
@@ -15,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -246,6 +251,33 @@ func allowed(repos []string, p string) bool {
 	return false
 }
 
+// ---------- 背景 git fetch（每 repo 最多 60 秒一次，讓 shippable 判斷跟得上 GitHub 上的合併） ----------
+
+const fetchInterval = 60 * time.Second
+
+var (
+	fetchMu   sync.Mutex
+	lastFetch = map[string]time.Time{}
+)
+
+// fetchOriginIfStale：距上次 fetch 超過 fetchInterval 才真的跑，避免每
+// 5 秒的 state 輪詢都打一次網路。同步執行（有 5 秒逾時保護）——只在
+// 每個 repo 每 60 秒的第一次請求會稍微變慢，其餘輪詢直接用快取結果。
+func fetchOriginIfStale(path string) {
+	fetchMu.Lock()
+	stale := time.Since(lastFetch[path]) > fetchInterval
+	if stale {
+		lastFetch[path] = time.Now()
+	}
+	fetchMu.Unlock()
+	if !stale {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	exec.CommandContext(ctx, "git", "-C", path, "fetch", "origin", "--quiet").Run()
+}
+
 // ---------- 讀取協定檔（容錯優先：壞檔回空值，不 panic） ----------
 
 func readRepo(path, devURL string) RepoState {
@@ -308,8 +340,11 @@ func readRepo(path, devURL string) RepoState {
 			s.LastRunCost = strconv.FormatFloat(f, 'f', 2, 64)
 		}
 	}
-	// shippable：ai/queue 領先主分支多少 commit（主分支猜 main，退 master）
-	for _, base := range []string{"main", "master"} {
+	// shippable：ai/queue 領先主分支多少 commit。優先比 origin/<branch>
+	// （PR 在 GitHub 合併後這裡最準，不必等人手動 git pull）；沒有
+	// remote-tracking ref（離線、沒 remote）就退回本地分支
+	fetchOriginIfStale(path)
+	for _, base := range []string{"origin/main", "origin/master", "main", "master"} {
 		out, err := exec.Command("git", "-C", path, "rev-list", "--count", base+"..ai/queue").Output()
 		if err == nil {
 			s.Shippable, _ = strconv.Atoi(strings.TrimSpace(string(out)))
