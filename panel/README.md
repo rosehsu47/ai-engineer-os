@@ -20,22 +20,31 @@ aios-panel -repos /path/a,/path/b \
 repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 進去
 （/ai-init 收尾會自動做）5 秒內卡片就出現，panel 不用重啟。
 
-每行可選填第二欄（空白分隔）：這個 repo 本機 dev server 的網址，例如：
+每行可選填第二欄（空白分隔）：這個 repo 本機 dev server 的網址；選填
+第三欄起：啟動 dev server 的指令（有填才會出現「▶ 啟動」按鈕），例如：
 
 ```
-/path/a http://localhost:5173
+/path/a http://localhost:5173 npm run dev
+/path/b http://localhost:8080/ make dev
 ```
 
-有填的話卡片標題列會多一個 ↗ 圖示，點開新分頁直接開那個網址。純人工
-維護的清單欄位，不是 `.ai/` 協定檔，agent 不會讀寫它；`/ai-init` 訪談時
-會問一次，之後想改就直接編輯 `~/.aios-repos`。
+有填網址的話卡片標題列會多一個 ↗ 圖示，點開新分頁直接開那個網址。純
+人工維護的清單欄位，不是 `.ai/` 協定檔，agent 不會讀寫它；`/ai-init`
+訪談時會問一次，之後想改就直接編輯 `~/.aios-repos`。
 
 ## 畫面上有什麼（每 5 秒自動更新）
+
+標題列下方會顯示本機內網 IP（純參考用——panel 仍只綁 127.0.0.1，這個
+位址目前連不進來；要從手機/其他裝置連，需要額外的 tunnel 並自行評估
+沒有認證這件事的風險）。
 
 每個 repo 一張卡：
 - 狀態燈：🟢 supervisor 執行中（含 pid）／⚪ 待命／🟡 等你回答／🔴 已煞車
 - checkpoint phase 與輪數、上輪結果與成本
 - 進行中任務、待辦前 5 筆＋總數、完成數、最近 3 張收據
+- **dev server 啟動/停止**（第三欄設了指令才會出現）：▶ 啟動／■ 停止
+  按鈕＋執行中/未啟動狀態，執行中會顯示 pid 與一個 log 連結（純文字，
+  開新分頁看 `sh -c "{指令}"` 的 stdout/stderr）
 - **❓ 問答區**：agent 的 PAUSED 問題直接顯示，textarea 送出回覆
 - **🚢 出貨提示**：ai/queue 領先幾個 commit＋可複製的 `/ai-ship` 指令
 - **STOP 煞車／解除**按鈕
@@ -53,4 +62,20 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - **出貨（git push）與 merge 永遠不在 panel 裡發生**——那是對外動作，
   留在你的終端機與 GitHub
 
-所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的狀態。
+**dev server 啟動/停止是唯一的例外**——它不是協定檔讀寫，而是真的會在
+本機 spawn 一個長駐行程。刻意跟協定狀態分開處理，把風險收斂到最小：
+- 指令只能來自你自己維護的 `~/.aios-repos`（本機檔案，不是網路輸入、
+  agent 也不會寫它），不存在指令注入的外部攻擊面
+- pid/log 檔存在 `~/.aios-panel-state/`，完全不碰目標 repo 的 `.ai/`——
+  跟審計/協定狀態切乾淨，panel 壞掉也不會弄髒 repo 的稽核紀錄
+- 啟動時用獨立 process group（`Setpgid`），停止時整個 group 一起收，
+  `npm run dev` 這類會 fork 子行程（`next-server`）的指令不會留孤兒行程
+- **啟動前一定先檢查設定的 port 有沒有人在聽**，不只看 panel 自己的
+  pidfile——如果你自己在終端機手動開過（或指令沒寫死 `--port`，服務
+  本身會在偵測到 port 被占用時自己悄悄換一個），panel 會辨識成「已經
+  在跑」而不重複啟動，避免多開一份、換到意料外的 port。這種情況下
+  panel 沒有可控制的 pid，停止鍵會如實回報「不是我啟動的，你自己關」，
+  不會假裝關掉了
+
+所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的協定狀態（dev
+server 是唯一會留下本機執行副作用的功能，跟 `.ai/` 協定本身無關）。

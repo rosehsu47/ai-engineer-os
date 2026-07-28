@@ -48,6 +48,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .icon-btn svg{width:14px;height:14px}
 </style></head><body>
 <h1>🤖 AI Engineer OS 控制台 <span class="muted" id="ts"></span> <span class="muted" id="usage"></span></h1>
+<p class="muted" id="lan">{{LAN_INFO}}</p>
 <p class="muted">panel 只讀寫協定檔（回答/煞車）；出貨與 merge 永遠在你的終端機。每 5 秒自動更新。</p>
 <div class="grid" id="grid"></div>
 <script>
@@ -93,6 +94,15 @@ function card(s){
       (s.dev_url?'<a class="icon-btn" href="'+esc(s.dev_url)+
        '" target="_blank" title="'+esc(s.dev_url)+'">'+ICON_OPEN+'</a>':'')+
      '</span>':'')+'</h2>';
+  if(s.dev_command){
+    if(s.dev_server_running){
+      const who=s.dev_server_pid?'（pid '+s.dev_server_pid+'）':'（非 panel 啟動，無法追蹤 pid）';
+      h+='<div class="row">dev server：<b style="color:#34d399">執行中</b>'+who+' '+
+        '<a href="/api/devlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a> '+
+        '<button data-act="devstop" data-repo="'+esc(s.path)+'">■ 停止</button></div>';
+    } else h+='<div class="row">dev server：<b style="color:#64748b">未啟動</b> '+
+      '<button class="primary" data-act="devstart" data-repo="'+esc(s.path)+'">▶ 啟動</button></div>';
+  }
   if(s.last_run_status) h+='<div class="row">上輪 '+esc(s.last_run_status)+' $'+esc(s.last_run_cost||'0')+'</div>';
   const total=s.backlog_count+s.done_count, pct=total>0?Math.round(s.done_count/total*100):0;
   h+='<div class="stats"><span>待辦 '+s.backlog_count+' · 完成 '+s.done_count+'</span>'+
@@ -159,6 +169,8 @@ document.getElementById('grid').addEventListener('click', e=>{
   if(b.dataset.act==='answer'){
     const t=b.closest('.qa').querySelector('textarea').value;
     if(t.trim()) post('/api/answer',{repo:repo,text:t});
+  } else if(b.dataset.act==='devstart'||b.dataset.act==='devstop'){
+    post('/api/devserver',{repo:repo,action:b.dataset.act==='devstart'?'start':'stop'});
   } else stopRepo(repo,b.dataset.act);
 });
 refresh(); setInterval(refresh, 5000);

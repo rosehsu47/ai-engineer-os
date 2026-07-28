@@ -1,21 +1,23 @@
 // aios-panel — AI Engineer OS 的本機控制台（零外部依賴，只綁 127.0.0.1）。
 //
 // 設計原則：panel 只是「協定檔的讀者與寫者」，判斷力留在 agent——
-//   讀：supervisor lock（幾個 agent 在跑）、doing/backlog/done、checkpoint、
-//       PAUSED、last_run、receipts frontmatter、ai/queue 領先數
-//   寫：只寫兩種協定檔——PAUSED 的「## 人類回覆」節、.ai/STOP 的建立/刪除
-//   出貨（push）是對外動作，panel 只顯示可出貨數量與 /ai-ship 指令。
-//   唯一例外：claude 帳號用量（/api/usage）——帳號層級、不是協定檔，
-//   查一次要 spawn `claude -p "/usage"`（非零成本，~0.5s），所以刻意
-//   跟 5 秒的 state 輪詢分開：60 秒快取一次，且只查一次（不分 repo）。
-//   另一個例外：「可出貨」判斷背景跑 `git fetch origin`（唯讀、只更新
-//   remote-tracking ref，不碰本地分支/工作區）——GitHub 上 PR 合併後，
-//   不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
-//   每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
+//
+//	讀：supervisor lock（幾個 agent 在跑）、doing/backlog/done、checkpoint、
+//	    PAUSED、last_run、receipts frontmatter、ai/queue 領先數
+//	寫：只寫兩種協定檔——PAUSED 的「## 人類回覆」節、.ai/STOP 的建立/刪除
+//	出貨（push）是對外動作，panel 只顯示可出貨數量與 /ai-ship 指令。
+//	唯一例外：claude 帳號用量（/api/usage）——帳號層級、不是協定檔，
+//	查一次要 spawn `claude -p "/usage"`（非零成本，~0.5s），所以刻意
+//	跟 5 秒的 state 輪詢分開：60 秒快取一次，且只查一次（不分 repo）。
+//	另一個例外：「可出貨」判斷背景跑 `git fetch origin`（唯讀、只更新
+//	remote-tracking ref，不碰本地分支/工作區）——GitHub 上 PR 合併後，
+//	不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
+//	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
 //
 // 用法：
-//   go run ./panel -repos /path/a,/path/b        （或編譯後 aios-panel）
-//   沒給 -repos 時讀 ~/.aios-repos（一行一個 repo 路徑，# 開頭為註解）
+//
+//	go run ./panel -repos /path/a,/path/b        （或編譯後 aios-panel）
+//	沒給 -repos 時讀 ~/.aios-repos（一行一個 repo 路徑，# 開頭為註解）
 package main
 
 import (
@@ -23,7 +25,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,29 +40,39 @@ import (
 )
 
 type RepoState struct {
-	Name            string   `json:"name"`
-	Path            string   `json:"path"`
-	Missing         bool     `json:"missing"` // .ai/ 不存在
-	SupervisorAlive bool     `json:"supervisor_alive"`
-	SupervisorPID   int      `json:"supervisor_pid,omitempty"`
-	Stopped         bool     `json:"stopped"` // .ai/STOP 存在
-	Phase           string   `json:"phase"`
-	Iteration       int      `json:"iteration"`
-	CurrentTask     string   `json:"current_task"` // doing.yaml 的 id+title
-	Backlog         []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
-	BacklogCount    int      `json:"backlog_count"`
-	DoneCount       int      `json:"done_count"`
-	Paused          bool     `json:"paused"`
-	PausedQuestion  string   `json:"paused_question,omitempty"`
-	PausedAnswered  bool     `json:"paused_answered"`
-	Shippable       int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
-	DirtyCount      int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
-	LastRunStatus   string   `json:"last_run_status,omitempty"`
-	LastRunCost     string   `json:"last_run_cost,omitempty"`
-	LastRunAt       string   `json:"last_run_at,omitempty"`
-	Receipts        []string `json:"receipts"` // 最近 3 張 "日期/NNN [status] [human]? title"
-	DashboardReady  bool     `json:"dashboard_ready"` // 卡片要不要顯示「儀表板」連結
-	DevURL          string   `json:"dev_url,omitempty"` // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
+	Name             string   `json:"name"`
+	Path             string   `json:"path"`
+	Missing          bool     `json:"missing"` // .ai/ 不存在
+	SupervisorAlive  bool     `json:"supervisor_alive"`
+	SupervisorPID    int      `json:"supervisor_pid,omitempty"`
+	Stopped          bool     `json:"stopped"` // .ai/STOP 存在
+	Phase            string   `json:"phase"`
+	Iteration        int      `json:"iteration"`
+	CurrentTask      string   `json:"current_task"` // doing.yaml 的 id+title
+	Backlog          []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
+	BacklogCount     int      `json:"backlog_count"`
+	DoneCount        int      `json:"done_count"`
+	Paused           bool     `json:"paused"`
+	PausedQuestion   string   `json:"paused_question,omitempty"`
+	PausedAnswered   bool     `json:"paused_answered"`
+	Shippable        int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
+	DirtyCount       int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
+	LastRunStatus    string   `json:"last_run_status,omitempty"`
+	LastRunCost      string   `json:"last_run_cost,omitempty"`
+	LastRunAt        string   `json:"last_run_at,omitempty"`
+	Receipts         []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
+	DashboardReady   bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
+	DevURL           string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
+	DevCommand       string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
+	DevServerRunning bool     `json:"dev_server_running"`
+	DevServerPID     int      `json:"dev_server_pid,omitempty"`
+}
+
+// DevConfig：~/.aios-repos 每行選填的第二、三欄——dev server 網址與啟動指令。
+// 純人工維護，不是 `.ai/` 協定檔，agent 不讀不寫。
+type DevConfig struct {
+	URL     string
+	Command string
 }
 
 // dashboardScriptPath：supervisor/dashboard.sh 的路徑（-dashboard-script 設定）。
@@ -85,16 +99,22 @@ func main() {
 		os.Exit(64)
 	}
 
+	lanInfo := ""
+	if ip := firstLANIP(); ip != "" {
+		port := (*addr)[strings.LastIndex(*addr, ":")+1:]
+		lanInfo = fmt.Sprintf("內網位址（僅供參考——panel 只綁 127.0.0.1，這個位址目前連不進來）：http://%s:%s", ip, port)
+	}
+	renderedPage := strings.Replace(pageHTML, "{{LAN_INFO}}", lanInfo, 1)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, pageHTML)
+		fmt.Fprint(w, renderedPage)
 	})
 	http.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		repos := currentRepos()
-		devURLs := loadDevURLs(*reposFlag)
+		devCfg := loadDevConfig(*reposFlag)
 		states := make([]RepoState, 0, len(repos))
 		for _, p := range repos {
-			states = append(states, readRepo(p, devURLs[p]))
+			states = append(states, readRepo(p, devCfg[p]))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(states)
@@ -186,6 +206,48 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
+	http.HandleFunc("/api/devserver", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		repo, action := r.FormValue("repo"), r.FormValue("action")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		cfg := loadDevConfig(*reposFlag)[filepath.Clean(repo)]
+		switch action {
+		case "start":
+			if cfg.Command == "" {
+				http.Error(w, "此 repo 在 ~/.aios-repos 沒有設定啟動指令（第三欄）", 400)
+				return
+			}
+			if err := startDevServer(repo, cfg); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		case "stop":
+			if err := stopDevServer(repo, cfg.URL); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		default:
+			http.Error(w, "action 必須是 start|stop", 400)
+			return
+		}
+		w.Write([]byte("ok"))
+	})
+	http.HandleFunc("/api/devlog", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeFile(w, r, devLogFile(repo))
+	})
+
 	fmt.Printf("aios-panel: http://%s  （repos: %d 個，清單熱重載）\n", *addr, len(currentRepos()))
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -212,12 +274,14 @@ func loadRepos(flagVal string) []string {
 	return out
 }
 
-// loadDevURLs 讀 ~/.aios-repos 每行的第二欄（空白分隔，可選）：本機 dev
-// server 網址，純人工維護，agent 不讀不寫、不是協定檔。格式：
-// `{path} {url}`，例如 `/repo/a http://localhost:5173`。
-// -repos flag 給的清單不支援這欄（CLI 用法維持簡單，回傳空 map）。
-func loadDevURLs(flagVal string) map[string]string {
-	out := map[string]string{}
+// loadDevConfig 讀 ~/.aios-repos 每行第二欄起（空白分隔，皆可選）：本機
+// dev server 網址（第二欄）與啟動指令（第三欄起，joined）。純人工維護，
+// agent 不讀不寫、不是協定檔。格式：`{path} {url} {command...}`，例如
+// `/repo/a http://localhost:5173 npm run dev`。只有網址沒有指令就不會
+// 顯示啟動按鈕。-repos flag 給的清單不支援這兩欄（CLI 用法維持簡單，
+// 回傳空 map）。
+func loadDevConfig(flagVal string) map[string]DevConfig {
+	out := map[string]DevConfig{}
 	if flagVal != "" {
 		return out
 	}
@@ -235,11 +299,37 @@ func loadDevURLs(flagVal string) map[string]string {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) > 1 {
-			out[filepath.Clean(fields[0])] = fields[1]
+		if len(fields) < 2 {
+			continue
 		}
+		cfg := DevConfig{URL: fields[1]}
+		if len(fields) > 2 {
+			cfg.Command = strings.Join(fields[2:], " ")
+		}
+		out[filepath.Clean(fields[0])] = cfg
 	}
 	return out
+}
+
+// firstLANIP：抓第一個看起來像區網位址的非 loopback IPv4（僅供標題列
+// 顯示參考用，panel 實際綁定位址不受這個值影響）。
+func firstLANIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok || ipnet.IP.IsLoopback() {
+			continue
+		}
+		ip4 := ipnet.IP.To4()
+		if ip4 == nil || ip4.IsLinkLocalUnicast() {
+			continue
+		}
+		return ip4.String()
+	}
+	return ""
 }
 
 func allowed(repos []string, p string) bool {
@@ -278,10 +368,151 @@ func fetchOriginIfStale(path string) {
 	exec.CommandContext(ctx, "git", "-C", path, "fetch", "origin", "--quiet").Run()
 }
 
+// ---------- dev server 管理（panel 自己的狀態，刻意不寫進目標 repo 的
+// .ai/——那裡只給協定檔用，啟動指令是純本機執行狀態，跟審計/協定無關）----------
+
+// panelStateDir：pid/log 檔案存放處，跟目標 repo 完全分開。
+func panelStateDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = os.TempDir()
+	}
+	dir := filepath.Join(home, ".aios-panel-state")
+	os.MkdirAll(dir, 0o755)
+	return dir
+}
+
+var devIDRe = regexp.MustCompile(`[^A-Za-z0-9]+`)
+
+func devServerID(path string) string {
+	return strings.Trim(devIDRe.ReplaceAllString(path, "_"), "_")
+}
+
+func devPidFile(path string) string { return filepath.Join(panelStateDir(), devServerID(path)+".pid") }
+func devLogFile(path string) string { return filepath.Join(panelStateDir(), devServerID(path)+".log") }
+
+// ownPidStatus：讀 pidfile 並確認該 pid 真的還活著（同 supervisor lock
+// 的判斷手法）。pidfile 存在但程序已死＝上次沒有正常關閉，視為未執行。
+// 只反映「panel 自己啟動、還追蹤得到 pid」的那個行程。
+func ownPidStatus(path string) (bool, int) {
+	b, err := os.ReadFile(devPidFile(path))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return false, 0
+	}
+	if syscall.Kill(pid, 0) != nil {
+		os.Remove(devPidFile(path)) // 陳舊 pidfile，順手清掉
+		return false, 0
+	}
+	return true, pid
+}
+
+// portInUse：試著自己聽那個 port，聽得到就代表沒人占用（立刻關掉釋放），
+// 聽不到就是已經有人在用。用來偵測「不是 panel 啟動、但已經在跑」的
+// 服務（例如你自己在終端機手動開的）——不能只看 pidfile，否則對沒帶
+// 明確 --port 的指令（例如 `next dev` 沒寫死 port），panel 會以為沒在
+// 跑而重新啟動，Next.js 發現 port 被占用會自己悄悄換一個 port，變成
+// 使用者搞不清楚哪個才是真的在跑的那個。
+func portInUse(devURL string) bool {
+	u, err := url.Parse(devURL)
+	if err != nil || u.Port() == "" {
+		return false // 沒有明確 port 就無法判斷，不擋
+	}
+	ln, err := net.Listen("tcp", ":"+u.Port())
+	if err != nil {
+		return true
+	}
+	ln.Close()
+	return false
+}
+
+// devServerStatus：給畫面顯示與「啟動前檢查」用——panel 自己追蹤得到的
+// pid 優先；追不到但 port 已經有人占用，也算「執行中」（pid 回 0，代表
+// 沒有 panel 可以控制的 pid，只能告知使用者，不能幫忙關）。
+func devServerStatus(path, devURL string) (bool, int) {
+	if running, pid := ownPidStatus(path); running {
+		return true, pid
+	}
+	if devURL != "" && portInUse(devURL) {
+		return true, 0
+	}
+	return false, 0
+}
+
+// startDevServer：`sh -c command` 在自己的 process group 起（Setpgid），
+// 這樣 stop 時可以用 -pid 把整棵子行程樹（例如 `npm run dev` 底下真正
+// 幹活的 `next-server`）一起收掉，不留孤兒行程。輸出導去 log 檔，
+// 背景 goroutine Wait() 回收，行程結束時順手清 pidfile（讓「當掉的
+// dev server」下一輪輪詢就會正確顯示成未執行，不用等使用者手動按停止）。
+// **啟動前一定先檢查 port 有沒有人在用**（不論是不是 panel 自己啟動
+// 的）——已經有人占用就直接視為「已經在跑」，不重複啟動，避免對沒寫
+// 死 port 的指令（如純 `next dev`）造成它自己悄悄換到別的 port。
+func startDevServer(path string, cfg DevConfig) error {
+	if running, _ := devServerStatus(path, cfg.URL); running {
+		return nil
+	}
+	logf, err := os.OpenFile(devLogFile(path), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("sh", "-c", cfg.Command)
+	cmd.Dir = path
+	cmd.Stdout = logf
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		logf.Close()
+		return err
+	}
+	if err := os.WriteFile(devPidFile(path), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
+		logf.Close()
+		return err
+	}
+	go func() {
+		cmd.Wait()
+		logf.Close()
+		os.Remove(devPidFile(path))
+	}()
+	return nil
+}
+
+// stopDevServer：SIGTERM 整個 process group，給 2 秒優雅關閉，逾時才
+// SIGKILL。負 pid＝殺整個 group（Setpgid 保證這個 group 只有這棵樹）。
+// 只能關 panel 自己追蹤到 pid 的那個；如果偵測到 port 有人占用但不是
+// 我們啟動的，明確告知使用者，不假裝關掉了。
+func stopDevServer(path, devURL string) error {
+	running, pid := ownPidStatus(path)
+	if !running {
+		os.Remove(devPidFile(path))
+		if devURL != "" && portInUse(devURL) {
+			return fmt.Errorf("這個 port 上有服務在跑，但不是 panel 啟動的（沒有追蹤到 pid），需要你自己手動關掉")
+		}
+		return nil
+	}
+	syscall.Kill(-pid, syscall.SIGTERM)
+	for range 20 {
+		if syscall.Kill(pid, 0) != nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if syscall.Kill(pid, 0) == nil {
+		syscall.Kill(-pid, syscall.SIGKILL)
+	}
+	os.Remove(devPidFile(path))
+	return nil
+}
+
 // ---------- 讀取協定檔（容錯優先：壞檔回空值，不 panic） ----------
 
-func readRepo(path, devURL string) RepoState {
-	s := RepoState{Name: filepath.Base(path), Path: path, DevURL: devURL}
+func readRepo(path string, devCfg DevConfig) RepoState {
+	s := RepoState{Name: filepath.Base(path), Path: path, DevURL: devCfg.URL, DevCommand: devCfg.Command}
+	if devCfg.Command != "" {
+		s.DevServerRunning, s.DevServerPID = devServerStatus(path, devCfg.URL)
+	}
 	ai := filepath.Join(path, ".ai")
 	if _, err := os.Stat(ai); err != nil {
 		s.Missing = true
