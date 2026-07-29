@@ -18,6 +18,15 @@
 核心原則：**所有狀態都在檔案裡**。agent session 是無狀態的、可拋棄的；
 crash / rate-limit / 手動中斷之後的恢復，跟正常啟動是同一條路徑。
 
+**單一寫入者不變量**：同一個 repo 的 `.ai/` 狀態任何時刻只該有一個寫入
+者。`supervisor.sh` 用 `.ai/supervisor/lock`（存 pid，靠 `kill -0` 判斷
+存活）保護自己的迴圈，但 lock 本身只擋第二個 `supervisor.sh`——不會擋
+人類另開一個互動 session 跑 `/ai-task`、`/ai-wrap` 等會整檔重寫
+`tasks/*.yaml`／`state/checkpoint.json` 的 skill。這些**人類互動 skill
+在動筆前要自己讀一次 `.ai/supervisor/lock`**、確認 pid 是否存活，存活
+就用 AskUserQuestion 讓人類知道有覆寫風險並選擇是否仍要繼續，而不是靜
+靜地跟 supervisor 的 session 同時寫壞同一份檔案。
+
 ## `.ai/` 目錄結構
 
 ```
@@ -234,8 +243,12 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
  "input_tokens":2,"output_tokens":4,"detail":""}
 ```
 
-- `event`：`run_start | iteration | rate_limit_sleep | quota_wait |
+- `event`：`run_start | iteration | review | rate_limit_sleep | quota_wait |
   quota_stop | cost_breaker | watchdog_kill | run_end`
+- `review`：`review_after_task` 開啟或 `REVIEW_REQUESTED` 旗標觸發的
+  `/ai-review` 審查輪，`task` 沿用被審查的那個 `iteration` 事件的
+  task id（審查輪本身不產生新任務）——讓「這個任務總共花多少錢」的
+  加總含審查成本，不只是原始 `/ai-work` 那輪
 - `cache_creation_input_tokens`/`cache_read_input_tokens`/`input_tokens`/
   `output_tokens`：從該輪 `claude -p --output-format json` 回應的 `usage`
   物件原樣摘出（`supervisor.sh` 的 `extract_usage_field()`），只在

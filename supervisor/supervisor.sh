@@ -769,6 +769,14 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
           total_cost=$(awk -v a="$total_cost" -v b="$rcost" 'BEGIN{printf "%.4f", a+b}')
           rline=$(extract_result < "$rout" | grep -oE 'AIOS_REVIEW: (PASS|FAIL)[^"]*' | tail -1)
           log "review 結果：${rline:-（無 AIOS_REVIEW 行——檢查 /ai-review skill 是否已安裝）} cost=\$${rcost}"
+          # 歸帳到被審查的任務（task_tok 沿用上一輪 /ai-work 的值不變）——
+          # 讓「這個任務花多少錢」的加總含審查成本，不只是原始那輪
+          cost="$rcost"
+          cache_creation=$(extract_usage_field cache_creation_input_tokens < "$rout")
+          cache_read=$(extract_usage_field cache_read_input_tokens < "$rout")
+          in_tok=$(extract_usage_field input_tokens < "$rout")
+          out_tok=$(extract_usage_field output_tokens < "$rout")
+          emit_event review "task=${task_tok:-none}"
           rm -f "$REPO/.ai/REVIEW_REQUESTED"   # 旗標一次性，審完即清（supervisor 是 bash，不受 agent 的 rm deny 約束）
           # FAIL 時 reviewer 已把修正任務排進 backlog，下一輪 /ai-work 自然接手
         fi

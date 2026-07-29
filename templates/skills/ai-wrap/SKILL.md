@@ -12,6 +12,13 @@ description: 互動 session 收帳——把這輪對話直接改的程式碼收�
 
 ## 流程
 
+0. **檢查 supervisor lock**：讀 `.ai/supervisor/lock`（存在就取 pid，
+   `kill -0 <pid>` 確認還活著）。活著代表 supervisor 正在跑一輪
+   `/ai-work`，它跟這個 skill 都會整檔重寫 `done.yaml`／改動同一批
+   checkpoint 狀態檔——同時寫會互撞（單一寫入者不變量，見
+   AI-RUNTIME.md）。用 AskUserQuestion 讓使用者選：等它跑完再收帳
+   （推薦）／仍要現在收帳（講清楚有覆寫風險）。lock 不存在或 pid 已死
+   就正常往下走。
 1. **盤點**：`git status --porcelain` 列出未 commit 的變更。
    - 全空 → 檢查是否有「已 commit 但沒 receipt」的情況（最近的
      `[T-NNN]` commit 是否在 done.yaml 有對應條目）；都齊了就告知

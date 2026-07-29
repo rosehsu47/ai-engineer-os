@@ -10,6 +10,13 @@ description: 用問答/選擇題引導的方式新增任務到 .ai/tasks/backlog
 
 ## 流程
 
+0. **檢查 supervisor lock**：讀 `.ai/supervisor/lock`（存在就取其中的 pid，
+   用 `kill -0 <pid>` 確認還活著）。活著代表 supervisor 正在這個 repo 跑
+   一輪 `/ai-work`，它隨時可能整檔重寫 `backlog.yaml`——這個 skill 最後
+   一步也是整檔重寫，兩邊同時寫會互相蓋掉（單一寫入者不變量，見
+   AI-RUNTIME.md）。用 AskUserQuestion 讓使用者選：等它跑完再種任務
+   （推薦）／仍要現在寫入（講清楚有覆寫風險）。lock 不存在或 pid 已死
+   就正常往下走。
 1. **聽需求**：使用者沒附描述就先問「想讓 agent 做什麼？」（自由文字）
 2. **起草**：根據描述起草整筆任務，然後用選擇題確認三件事：
    - `type`：feature / fix / chore / test / docs / architecture / performance

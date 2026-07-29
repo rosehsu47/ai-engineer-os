@@ -21,6 +21,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -536,8 +537,13 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		}
 	}
 	// tasks
-	s.CurrentTask = firstTask(filepath.Join(ai, "tasks", "doing.yaml"))
-	s.Backlog, s.BacklogCount = taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 5)
+	costs := taskCosts(filepath.Join(ai, "supervisor"))
+	s.CurrentTask = withCost(firstTask(filepath.Join(ai, "tasks", "doing.yaml")), costs)
+	backlog, backlogCount := taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 5)
+	for i, t := range backlog {
+		backlog[i] = withCost(t, costs)
+	}
+	s.Backlog, s.BacklogCount = backlog, backlogCount
 	_, s.DoneCount = taskList(filepath.Join(ai, "tasks", "done.yaml"), 0)
 	// PAUSED：判斷「已回覆」不能只看子字串有沒有出現——agent 自己寫問題時
 	// 常會在建議選項裡提到「回覆『## 人類回覆』節」這種說明文字，也可能先
@@ -589,7 +595,7 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		}
 	}
 	// receipts（最近 3）
-	s.Receipts = recentReceipts(filepath.Join(ai, "receipts"), 3)
+	s.Receipts = recentReceipts(filepath.Join(ai, "receipts"), 3, costs)
 	// 儀表板：有舊快照可讀，或設了 -dashboard-script 可以現算，就給連結
 	_, err = os.Stat(filepath.Join(ai, "reports", "dashboard.html"))
 	s.DashboardReady = err == nil || dashboardScriptPath != ""
@@ -717,7 +723,53 @@ func firstTask(p string) string {
 	return ""
 }
 
-func recentReceipts(dir string, n int) []string {
+// taskCosts 讀 .ai/supervisor/events.jsonl，依 task id 加總 cost_usd
+// （iteration 事件是原始 /ai-work 那輪，review 事件是同一個任務的審查
+// 輪——兩者都歸帳到同一個 task id，見 AI-RUNTIME.md 事件模型）。這是
+// 執行遙測而非稽核檔：檔案不存在、被 truncate、或某筆任務全程走人類
+// 互動 session（/ai-task 種進去但用 /ai-wrap 收帳，從沒被 supervisor
+// 跑過）都查無資料，一律回傳「這筆沒有」而非報錯。
+func taskCosts(supDir string) map[string]float64 {
+	out := map[string]float64{}
+	f, err := os.Open(filepath.Join(supDir, "events.jsonl"))
+	if err != nil {
+		return out
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var ev struct {
+			Task    string  `json:"task"`
+			CostUsd float64 `json:"cost_usd"`
+		}
+		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+			continue
+		}
+		if ev.Task == "" || ev.Task == "none" || ev.CostUsd == 0 {
+			continue
+		}
+		out[ev.Task] += ev.CostUsd
+	}
+	return out
+}
+
+func fmtCost(v float64) string { return "$" + strconv.FormatFloat(v, 'f', 2, 64) }
+
+// withCost 把 "T-NNN 標題" 的任務顯示行加上該任務目前的累計成本；查無
+// 資料就原樣回傳（前端 splitId 只切第一個空白，加的尾巴會落進 title）。
+func withCost(line string, costs map[string]float64) string {
+	if line == "" {
+		return line
+	}
+	id, _, _ := strings.Cut(line, " ")
+	if v, ok := costs[id]; ok {
+		return line + " · " + fmtCost(v)
+	}
+	return line
+}
+
+func recentReceipts(dir string, n int, costs map[string]float64) []string {
 	var files []string
 	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && strings.HasSuffix(p, ".md") {
@@ -748,7 +800,11 @@ func recentReceipts(dir string, n int) []string {
 		if get("source") == "human-interactive" {
 			human = "[human] "
 		}
-		out = append(out, fmt.Sprintf("%s [%s] %s%s", rel, get("status"), human, get("title")))
+		title := get("title")
+		if v, ok := costs[get("task_id")]; ok {
+			title += " · " + fmtCost(v)
+		}
+		out = append(out, fmt.Sprintf("%s [%s] %s%s", rel, get("status"), human, title))
 	}
 	return out
 }
