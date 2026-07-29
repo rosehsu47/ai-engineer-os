@@ -20,6 +20,7 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--repo <path>` | 必填，目標 repo |
 | `--once` | 只跑一輪 |
 | `--max-iterations N` / `--max-failures N` / `--model M` | 覆蓋 schedule.yml |
+| `--quota-wait N` / `--quota-stop N` | 只這次覆蓋 `quota_wait_threshold_pct`（軟門檻，5h）／`quota_stop_threshold_pct`（硬門檻，7d），不改 `schedule.yml`；`--dry-run` 會印出實際生效的值方便確認 |
 | `--claude-flags "..."` | 附加給 claude CLI 的 flags |
 | `--yolo` | 用 `--dangerously-skip-permissions`（信任的 repo 才用；永不自動啟用） |
 | `--review` | 每個 DONE_TASK 後開全新 session 獨立審查（= schedule 的 `review_after_task`） |

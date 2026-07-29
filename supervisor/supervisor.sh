@@ -7,7 +7,8 @@
 #
 # 用法：
 #   supervisor.sh --repo /path/to/repo [--once] [--max-iterations N]
-#                 [--max-failures N] [--model M] [--claude-flags "..."]
+#                 [--max-failures N] [--quota-wait N] [--quota-stop N]
+#                 [--model M] [--claude-flags "..."]
 #                 [--yolo] [--wait-on-pause] [--ignore-quota] [--dry-run] [--verbose]
 #   supervisor.sh --self-test        # 零額度：用內嵌 fixtures 驗證分類器
 #   supervisor.sh --doctor --repo X  # 零額度環境體檢（首跑前在一般終端機執行）
@@ -22,6 +23,7 @@ set -u
 REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
 DOCTOR=0 PROBE=0 IGNORE_QUOTA=0
 MAX_ITER="" MAX_FAIL="" MODEL="" EXTRA_FLAGS=""
+QUOTA_WAIT="" QUOTA_STOP=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -29,6 +31,8 @@ while [ $# -gt 0 ]; do
     --once) ONCE=1; shift ;;
     --max-iterations) MAX_ITER="$2"; shift 2 ;;
     --max-failures) MAX_FAIL="$2"; shift 2 ;;
+    --quota-wait) QUOTA_WAIT="$2"; shift 2 ;;
+    --quota-stop) QUOTA_STOP="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
     --claude-flags) EXTRA_FLAGS="$2"; shift 2 ;;
     --yolo) YOLO=1; shift ;;
@@ -196,8 +200,8 @@ quota_check() {
     emit_event quota_ignored
     return 0
   fi
-  stop_t=$(sched_get quota_stop_threshold_pct 80)
-  wait_t=$(sched_get quota_wait_threshold_pct 60)
+  stop_t="$QUOTA_STOP"
+  wait_t="$QUOTA_WAIT"
   recheck=$(sched_get quota_wait_recheck_minutes 20)
   while :; do
     out=$( (cd "$REPO" && claude -p "/usage" --output-format json) 2>/dev/null )
@@ -212,7 +216,7 @@ quota_check() {
       stop)
         reason="7d 已用 ${week:-?}%（硬門檻 ${stop_t}%，5h 已用 ${sess:-?}%）"
         log "quota 煞車：$reason —— 保留給個人使用"
-        printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct\n解除：刪除本檔、按 panel 的「解除煞車」，或下次跑加 --ignore-quota（會自動清掉這個檔）\n' \
+        printf 'quota 煞車（%s）\n%s\n調整門檻：.ai/schedule.yml 的 quota_stop_threshold_pct（永久）或下次跑加 --quota-stop N（只這次）\n解除：刪除本檔、按 panel 的「解除煞車」，或下次跑加 --ignore-quota（會自動清掉這個檔）\n' \
           "$(date '+%Y-%m-%dT%H:%M:%S')" "$reason" > "$REPO/.ai/STOP"
         END_REASON=quota_stop; emit_event quota_stop "$reason"
         return 1 ;;
@@ -603,6 +607,8 @@ SUP_DIR="$REPO/.ai/supervisor"; mkdir -p "$SUP_DIR"
 
 MAX_ITER="${MAX_ITER:-$(sched_get max_iterations_per_run 10)}"
 MAX_FAIL="${MAX_FAIL:-$(sched_get max_consecutive_failures 3)}"
+QUOTA_WAIT="${QUOTA_WAIT:-$(sched_get quota_wait_threshold_pct 60)}"
+QUOTA_STOP="${QUOTA_STOP:-$(sched_get quota_stop_threshold_pct 80)}"
 TIMEOUT_MIN=$(sched_get iteration_timeout_minutes 30)
 SLEEP_BETWEEN=$(sched_get sleep_between_iterations_seconds 20)
 RL_FALLBACK_MIN=$(sched_get rate_limit_fallback_sleep_minutes 30)
@@ -636,6 +642,7 @@ trap 'rm -f "$LOCK"' EXIT
 if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run：repo=$REPO model=$MODEL max_iter=$MAX_ITER max_fail=$MAX_FAIL"
   echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG ignore_quota=$IGNORE_QUOTA"
+  echo "  quota_wait=${QUOTA_WAIT}% quota_stop=${QUOTA_STOP}%"
   echo "  cmd: (cd $REPO && claude -p \"/ai-work\" --output-format json --model $MODEL $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS)"
   exit 0
 fi
