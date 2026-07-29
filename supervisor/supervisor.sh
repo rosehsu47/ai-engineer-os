@@ -81,18 +81,25 @@ extract_is_error() {
   if [ "$HAVE_JQ" = 1 ]; then jq -r '.is_error // false' 2>/dev/null
   else grep -q '"is_error"[[:space:]]*:[[:space:]]*true' && echo true || echo false; fi
 }
+extract_usage_field() { # extract_usage_field <field> ；stdin → usage.<field>（無則 0）
+  local field="$1" v=""
+  if [ "$HAVE_JQ" = 1 ]; then v=$(jq -r ".usage.${field} // empty" 2>/dev/null)
+  else v=$(grep -oE "\"${field}\"[[:space:]]*:[[:space:]]*[0-9]+" | grep -oE '[0-9]+' | head -1); fi
+  [ -n "$v" ] && printf '%s' "$v" || printf '0'
+}
 
 # ---------- loop 層事件（機械發出 → .ai/supervisor/events.jsonl；LLM 不參與） ----------
 # 事件 schema 見 AI-RUNTIME.md「事件模型」。值一律消毒（有損 by design，原文在 run.log）。
-emit_event() { # emit_event <event> [detail]；iter/class/status_tok/task_tok/cost 取當前迴圈變數
+emit_event() { # emit_event <event> [detail]；iter/class/status_tok/task_tok/cost/cache_*/*_tok 取當前迴圈變數
   [ -n "${SUP_DIR:-}" ] || return 0
   local ev="$1" detail san_d san_s san_t
   detail="${2:-}"
   san_d=$(printf '%s' "$detail" | tr -d '"\\' | tr '\n\t' '  ' | cut -c1-200)
   san_s=$(printf '%s' "${status_tok:-}" | tr -cd 'A-Z_')
   san_t=$(printf '%s' "${task_tok:-none}" | tr -cd 'A-Za-z0-9_.-' | cut -c1-32)
-  printf '{"at":"%s","event":"%s","iter":%s,"class":"%s","status":"%s","task":"%s","cost_usd":%s,"detail":"%s"}\n' \
-    "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$ev" "${iter:-0}" "${class:-}" "$san_s" "${san_t:-none}" "${cost:-0}" "$san_d" \
+  printf '{"at":"%s","event":"%s","iter":%s,"class":"%s","status":"%s","task":"%s","cost_usd":%s,"cache_creation_input_tokens":%s,"cache_read_input_tokens":%s,"input_tokens":%s,"output_tokens":%s,"detail":"%s"}\n' \
+    "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$ev" "${iter:-0}" "${class:-}" "$san_s" "${san_t:-none}" "${cost:-0}" \
+    "${cache_creation:-0}" "${cache_read:-0}" "${in_tok:-0}" "${out_tok:-0}" "$san_d" \
     >> "$SUP_DIR/events.jsonl"
   return 0
 }
@@ -570,10 +577,12 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
   tl "allow-drift 跳過 {{ 佔位" ok "$([ "$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" = 'Bash(date:*)' ] && echo ok || echo bad)"
   cp "$dir/tpl.json" "$dir/tgt.json"
   tl "drift 無漂移"           ok "$([ -z "$(doctor_perm_drift deny "$dir/tpl.json" "$dir/tgt.json")$(doctor_perm_drift allow "$dir/tpl.json" "$dir/tgt.json")" ] && echo ok || echo bad)"
-  echo "emit_event（JSON 逃逸與欄位消毒）："
+  echo "emit_event（JSON 逃逸、欄位消毒與 usage 欄位）："
   SUP_DIR="$dir"; iter=7; class=productive; status_tok=DONE_TASK; task_tok='T-001"x'; cost=0.12
+  cache_creation=12644 cache_read=21517 in_tok=2 out_tok=4
   emit_event iteration "detail 帶 \"引號\"、反斜線 \\ 與
 換行還有	tab"
+  cache_creation=0 cache_read=0 in_tok=0 out_tok=0   # 模擬迴圈下一輪頂端重置
   emit_event quota_wait "5h=65% >= 60%"
   SUP_DIR=""
   ev_ok=1
@@ -582,8 +591,12 @@ Current week (Fable): 46% used · resets Jul 15 at 12pm (Asia/Taipei)'
     jq -e . "$dir/events.jsonl" >/dev/null 2>&1 || ev_ok=0
     [ "$(jq -r 'select(.event=="iteration").task' "$dir/events.jsonl")" = "T-001x" ] || ev_ok=0
     [ "$(jq -r 'select(.event=="iteration").cost_usd' "$dir/events.jsonl")" = "0.12" ] || ev_ok=0
+    [ "$(jq -r 'select(.event=="iteration").cache_creation_input_tokens' "$dir/events.jsonl")" = "12644" ] || ev_ok=0
+    [ "$(jq -r 'select(.event=="iteration").cache_read_input_tokens' "$dir/events.jsonl")" = "21517" ] || ev_ok=0
+    [ "$(jq -r 'select(.event=="quota_wait").cache_read_input_tokens' "$dir/events.jsonl")" = "0" ] || ev_ok=0
   else
     grep -q '"event":"iteration"' "$dir/events.jsonl" || ev_ok=0
+    grep -q '"cache_creation_input_tokens":12644' "$dir/events.jsonl" || ev_ok=0
     grep -q '"task":"T-001x"' "$dir/events.jsonl" || ev_ok=0
   fi
   tl "兩行事件、值已消毒、合法 JSON" ok "$([ "$ev_ok" = 1 ] && echo ok || echo bad)"
@@ -670,6 +683,7 @@ emit_event run_start "model=$MODEL max_iter=$MAX_ITER"
 while [ "$iter" -lt "$MAX_ITER" ]; do
   iter=$((iter+1))
   class="" status_tok="" task_tok="" cost=0   # 不讓事件帶到上一輪的殘值
+  cache_creation=0 cache_read=0 in_tok=0 out_tok=0
 
   if [ -f "$REPO/.ai/STOP" ]; then log "發現 .ai/STOP，結束"; END_REASON=stop_flag; exit 0; fi
   if [ -f "$REPO/.ai/PAUSED" ] && ! grep -q '^## 人類回覆' "$REPO/.ai/PAUSED" 2>/dev/null; then
@@ -706,6 +720,10 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
 
   combined="$SUP_DIR/combined.txt"; cat "$out" "$err" > "$combined" 2>/dev/null
   cost=$(extract_cost < "$out")
+  cache_creation=$(extract_usage_field cache_creation_input_tokens < "$out")
+  cache_read=$(extract_usage_field cache_read_input_tokens < "$out")
+  in_tok=$(extract_usage_field input_tokens < "$out")
+  out_tok=$(extract_usage_field output_tokens < "$out")
   total_cost=$(awk -v a="$total_cost" -v b="$cost" 'BEGIN{printf "%.4f", a+b}')
   class=$(classify "$ec" "$combined")
   status_tok=$(grep -oE 'AIOS_STATUS: [A-Z_]+' "$combined" | tail -1 | awk '{print $2}')

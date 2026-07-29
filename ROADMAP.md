@@ -45,7 +45,27 @@
 
 ## 3. 下一階段（進行中）
 
-以下工作包正在實作，依代號列出：
+以下工作包正在實作，依代號列出。**目前優先序：V1 與 P1 排最前**——
+V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前對外只能
+講「協定不假設 Claude 專屬功能」，不能講「已支援多 agent」）；P1 決定
+「安全跑一晚只花 $X」這個賣點在訂閱制（最大宗使用情境，不是 API-key
+計費）下是不是名副其實。C/D 底下的項目是持續性健壯度工作，沒有這兩項
+急迫。
+
+**P — 定價與成本可見度**
+- **P1 訂閱制下的真實成本可見度**：`supervisor.sh` 的成本熔斷全部
+  依賴 claude CLI 自報的 `total_cost_usd`——這在 API-key 計費下是真帳，
+  但在訂閱制（Claude Pro/Max，也是最大宗的使用情境）下只是推估值，
+  已記在 `supervisor/README.md` 已知限制 4（「成本數字來自 claude CLI
+  回報的 total_cost_usd，訂閱制下為推估值」），但目前沒有工作項去改善
+  它，只是誠實承認。修法路徑：`events.jsonl` 的 `iteration` 事件現在
+  已經帶 `usage.cache_creation_input_tokens`/`cache_read_input_tokens`/
+  `input_tokens`/`output_tokens`（2026-07-28 加進 `supervisor.sh`）——
+  這代表 supervisor 可以用 `shared/models.md` 的公開定價表（cache
+  write ≈1.25x/2x、cache read ≈0.1x base input）自己重新算一次成本，
+  不必只信任 CLI 自報的 `total_cost_usd`，兩者對不上時至少能標記
+  「這輪成本是估算值，跟獨立試算差距 X%」，而不是沉默地把可能失真
+  的數字直接餵進 cost breaker 的門檻判斷。
 
 **C — 健壯性**
 - **C1 rate-limit 偵測強化**：fixture 先行再放寬 classifier regex；
@@ -58,6 +78,12 @@
   補上 AI-RUNTIME.md 已知限制 4 提到的驗證缺口）。
 - **C4 allowlist 補洞**：`Bash(date:*)`（時間戳協定強制要求）、
   `Bash(git show:*)`（`/ai-review` 需要讀歷史 diff）。
+- **C5 receipt 宣稱機械交叉驗證（`files_changed`）**：supervisor（純
+  bash）用 `git diff --stat` 核對 receipt frontmatter 的 `files_changed`
+  清單跟該任務實際 commit 改到的檔案是否一致，對不上就計失敗——跟現有
+  checkpoint mtime 交叉驗證同一個安全等級（純讀取已 commit 的 git
+  狀態，零副作用、零權限繞道）。**明確排除**：不對 `tests.command`
+  做機械重跑驗證，理由見 §4。
 
 **V — 定位驗證**
 - **V1 第二 agent 相容性驗證（Codex CLI）**：讓 Codex 接手一份既有的
@@ -109,6 +135,20 @@ runtime，以下項目不在範圍內：
 - **LLM 寫事件檔**：事件必須是機械發出（supervisor shell 直接寫
   `events.jsonl`），LLM 產生結構化日誌不可靠，這正是「已知限制 2」
   要避免的錯誤重演。
+- **機械重跑 receipt 宣稱驗證（如重跑 `tests.command` 核對測試結果）**：
+  評估過、明確否決，理由有四層：①成本——測試套件重跑一次，收尾時間
+  加倍，長的整合測試會直接吃光 watchdog 預算；②不確定性——flaky test
+  重跑可能失敗，會把系統雜訊誤判成 receipt 造假，錯誤地計進
+  `consecutive_failures`；③環境不對等——`claude -p` session 有自己的
+  venv/env vars，supervisor 外層 bash 不一定有同樣環境，重跑本身就可能
+  因環境差異而失敗；④**最根本的**——這會繞過 `.claude/settings.local.json`
+  的 allow/deny，讓 supervisor 直接執行 agent 寫進 receipt frontmatter
+  裡的任意字串，開一條沒有權限保護的新執行路徑，跟「PreToolUse/
+  PostToolUse hook 強制層」被拒絕的理由同一個精神：多一層執行路徑換不到
+  對等的信任提升，只是多一個攻擊面。證據驗證交給 receipt 的
+  `## 證據` 段落（要求貼實際測試輸出）＋ review 輪的 LLM 判斷力去決定
+  要不要重跑——只有有判斷力的執行者才該做這個決定，機械腳本不該替它決定。
+  純讀取、無副作用的機械交叉驗證（如 C5 的 `git diff --stat`）不受此限。
 - **log rotation**：`.ai/supervisor/` 是 gitignored 執行狀態，量小
   且非長期資產，不值得引入 rotation 邏輯。
 - **cron/視窗模式排程**：用作業系統原生的 launchd（D1），不用 cron

@@ -229,11 +229,20 @@ frontmatter 供 `/ai-report` 機器讀取；prose 供人類與履歷管線使用
 
 ```json
 {"at":"2026-07-15T17:00:00+0800","event":"iteration","iter":3,"class":"productive",
- "status":"DONE_TASK","task":"T-004","cost_usd":0.42,"detail":""}
+ "status":"DONE_TASK","task":"T-004","cost_usd":0.42,
+ "cache_creation_input_tokens":1865,"cache_read_input_tokens":26691,
+ "input_tokens":2,"output_tokens":4,"detail":""}
 ```
 
 - `event`：`run_start | iteration | rate_limit_sleep | quota_wait |
   quota_stop | cost_breaker | watchdog_kill | run_end`
+- `cache_creation_input_tokens`/`cache_read_input_tokens`/`input_tokens`/
+  `output_tokens`：從該輪 `claude -p --output-format json` 回應的 `usage`
+  物件原樣摘出（`supervisor.sh` 的 `extract_usage_field()`），只在
+  `iteration` 事件上有意義；其餘事件一律 `0`（迴圈頂端重置，不帶上一輪殘值）。
+  用途：量測「無狀態設計每輪重讀 CONTRACT/skill/state 檔案」的真實 token
+  成本佔比——`cache_read_input_tokens` 高、`cache_creation_input_tokens` 低
+  代表重讀內容大多命中快取（≈0.1x 價），不是每輪都全價重付
 - 值一律消毒（去引號/反斜線/換行，`detail` 截 200 字元）——**有損 by
   design**，要原文去 `run.log`
 - 消費者：`/ai-report` 的運行事件摘要節、`dashboard.sh` 的事件表。
