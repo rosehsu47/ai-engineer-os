@@ -37,6 +37,9 @@ description: 在目標 repo 安裝 .ai/ Agent Runtime Workspace（複製模板�
       選不要就把 `.ai/` 整個加進 .gitignore）
    7. 本機開發服務網址？（可選，例如 `http://localhost:5173`；有跑的話
       panel 卡片會多一個 ↗ 開啟連結——沒有就空著）
+   8. 啟動這個開發服務的指令？（可選，例如 `npm run dev`、`make dev`；
+      有填的話 panel 卡片會多一個「▶ 啟動 dev server」按鈕，沒有就空著
+      ——只有第 7 題也填了網址才有意義，網址空著這題就不用問）
 
 4. **填契約與權限**
    - 把訪談結果填進 `{path}/.ai/CONTRACT.md` 的所有 `{{...}}` 佔位符
@@ -50,7 +53,8 @@ description: 在目標 repo 安裝 .ai/ Agent Runtime Workspace（複製模板�
      - 已存在 → 合併 allow/deny 陣列（去重、保留原有條目），不動其他 key
    - `{path}/.gitignore` 加一行 `.ai/supervisor/`（已有就跳過）
    - **註冊進 panel**：`~/.aios-repos` 加一行 `{path}`，訪談第 7 題有填
-     網址就加第二欄 `{path} {url}`（檔案不存在就建立；已有同路徑就跳過
+     網址就加第二欄 `{path} {url}`，第 8 題也有填指令就再加第三欄起
+     `{path} {url} {command...}`（檔案不存在就建立；已有同路徑就跳過
      ——panel 只讀這份清單，不會自動發現新 repo）
    - **安裝互動 session 規則**：把 `templates/CLAUDE-SNIPPET.md` 全文
      append 到 `{path}/CLAUDE.md` 尾端（檔案不存在就建立；已含
@@ -75,8 +79,9 @@ description: 在目標 repo 安裝 .ai/ Agent Runtime Workspace（複製模板�
      agent 的 curl 常被白名單 prefix 比對擋下，之後想讓 agent 能
      端到端驗證，就把驗證指令加進這個腳本
    - **註冊進 panel 清單**：把目標 repo 的絕對路徑 append 進
-     `~/.aios-repos`（訪談第 7 題有填網址就加第二欄；檔案不存在就建立；
-     路徑已在清單裡就跳過，不要重複）。panel 與跨 repo 的 /ai-answer 都
+     `~/.aios-repos`（訪談第 7 題有填網址就加第二欄、第 8 題有填指令就
+     再加第三欄起；檔案不存在就建立；路徑已在清單裡就跳過，不要重複）。
+     panel 與跨 repo 的 /ai-answer 都
      讀這份清單；panel 的清單是熱重載的，正在跑的 panel 5 秒內就會
      長出新卡片
    - 告訴使用者下一步（**要求在一般終端機執行，不要在 Claude session 裡**
