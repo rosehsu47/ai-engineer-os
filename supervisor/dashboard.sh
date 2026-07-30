@@ -56,9 +56,6 @@ task_cost_table=$(awk '
   }
   END { for (t in sum) printf "%s %.4f\n", t, sum[t] }
 ' "$REPO/.ai/supervisor/events.jsonl" 2>/dev/null)
-task_cost() { # task_cost <id> → 金額字串（$0.42）或空字串（查無資料）
-  printf '%s\n' "$task_cost_table" | awk -v t="$1" '$1==t{printf "$%.2f", $2}'
-}
 
 # receipts 表（最近 15 張，讀 frontmatter；每列可點開看完整內文）
 receipt_rows=$(
@@ -74,11 +71,10 @@ receipt_rows=$(
     rid="$(basename "$(dirname "$f")")/$(basename "$f" .md)"
     anchor="r-$(printf '%s' "$rid" | tr '/' '-')"
     body=$(awk '/^---$/{n++; next} n>=2{print}' "$f" | esc)
-    cost=$(task_cost "$tid")
-    printf '<tr class="receipt-row" onclick="toggleDetail('"'"'%s'"'"')"><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
+    printf '<tr class="receipt-row" onclick="toggleDetail('"'"'%s'"'"')"><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
       "$anchor" "$rid" \
-      "$(printf '%s' "${title:-$tid}" | esc)" "$badge" "$st" "${score:-—}" "$review" "${tests:-—}" "${cost:-—}" "${com:-—}"
-    printf '<tr class="detail" id="%s"><td colspan="8"><pre>%s</pre></td></tr>\n' "$anchor" "$body"
+      "$(printf '%s' "${title:-$tid}" | esc)" "$badge" "$st" "${score:-—}" "$review" "${tests:-—}" "${com:-—}"
+    printf '<tr class="detail" id="%s"><td colspan="7"><pre>%s</pre></td></tr>\n' "$anchor" "$body"
   done
 )
 
@@ -101,11 +97,19 @@ event_rows=$(
   done
 )
 
-# done 任務表
+# done 任務表（成本查 task_cost_table：兩階段 awk，FNR==NR 那段先把它
+# 讀成 cost[task_id] 陣列，見上面 events.jsonl 加總的註解）
 done_rows=$(
-  awk '/^  - id:/{id=$3} /^    title:/{sub(/^    title:[ ]*/,""); t=$0} /^    result:/{r=$2}
-       /^    receipt:/{sub(/^    receipt:[ ]*/,""); gsub(/"/,""); printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", id, t, r, $0}' \
-    "$REPO/.ai/tasks/done.yaml" 2>/dev/null
+  awk 'FNR==NR{cost[$1]=$2; next}
+       /^  - id:/{id=$3}
+       /^    title:/{sub(/^    title:[ ]*/,""); t=$0}
+       /^    result:/{r=$2}
+       /^    receipt:/{
+         sub(/^    receipt:[ ]*/,""); gsub(/"/,"")
+         c=(id in cost) ? sprintf("$%.2f", cost[id]) : "—"
+         printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", id, t, r, c, $0
+       }' \
+    <(printf '%s\n' "$task_cost_table") "$REPO/.ai/tasks/done.yaml" 2>/dev/null
 )
 
 cat > "$OUT" <<HTML
@@ -139,11 +143,11 @@ cat > "$OUT" <<HTML
   <div class="card"><div class="v">\$${run_cost:-0}</div><div class="k">上次 run 成本（${run_status:-尚未跑過}｜${run_at:-—}）</div></div>
 </div>
 <h2>📋 Receipts（最近 15）</h2>
-<table><tr><th>收據</th><th>任務</th><th>狀態</th><th>自評</th><th>獨立審查</th><th>測試</th><th>成本</th><th>commit</th></tr>
-${receipt_rows:-<tr><td colspan=8 class=muted>還沒有收據</td></tr>}</table>
+<table><tr><th>收據</th><th>任務</th><th>狀態</th><th>自評</th><th>獨立審查</th><th>測試</th><th>commit</th></tr>
+${receipt_rows:-<tr><td colspan=7 class=muted>還沒有收據</td></tr>}</table>
 <h2>✅ 已完成任務</h2>
-<table><tr><th>ID</th><th>標題</th><th>結果</th><th>收據</th></tr>
-${done_rows:-<tr><td colspan=4 class=muted>還沒有完成的任務</td></tr>}</table>
+<table><tr><th>ID</th><th>標題</th><th>結果</th><th>成本</th><th>收據</th></tr>
+${done_rows:-<tr><td colspan=5 class=muted>還沒有完成的任務</td></tr>}</table>
 <h2>🌿 Git 事件（ai/queue 最近 12 個 commit）</h2>
 <table><tr><th>sha</th><th>訊息</th></tr>
 ${git_rows:-<tr><td colspan=2 class=muted>ai/queue 分支尚無 commit</td></tr>}</table>
