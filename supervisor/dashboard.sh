@@ -149,11 +149,11 @@ cat > "$OUT" <<HTML
 <h1>🤖 AI Engineer OS — $(basename "$REPO")</h1>
 <p class="muted">狀態：$stop ｜ 產生於 $(date '+%Y-%m-%d %H:%M')（重新產生：\`dashboard.sh --repo ...\`）</p>
 <div class="cards">
-  <div class="card"><div class="v">≈ \$${total_cost_est:-0}</div><div class="k">累計成本（估計值——不含 /ai-task、/ai-wrap 等互動 session）</div></div>
   <div class="card"><div class="v">$n_backlog / $n_doing / $n_done</div><div class="k">backlog / doing / done</div></div>
   <div class="card"><div class="v">$phase</div><div class="k">checkpoint phase（第 $iteration 輪）</div></div>
   <div class="card"><div class="v">${last_task:-—}</div><div class="k">最後完成任務</div></div>
   <div class="card"><div class="v">\$${run_cost:-0}</div><div class="k">上次 run 成本（${run_status:-尚未跑過}｜${run_at:-—}）</div></div>
+  <div class="card"><div class="v">≈ \$${total_cost_est:-0}</div><div class="k">累計成本（估計值——不含 /ai-task、/ai-wrap 等互動 session）</div></div>
 </div>
 <h2>📋 Receipts（最近 15）</h2>
 <table><tr><th>收據</th><th>任務</th><th>狀態</th><th>自評</th><th>獨立審查</th><th>測試</th><th>commit</th></tr>
