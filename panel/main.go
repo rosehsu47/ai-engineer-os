@@ -800,8 +800,12 @@ func recentReceipts(dir string, n int, costs map[string]float64) []string {
 		if get("source") == "human-interactive" {
 			human = "[human] "
 		}
+		taskID := get("task_id")
 		title := get("title")
-		if v, ok := costs[get("task_id")]; ok {
+		if title == "" {
+			title = taskID // 舊格式收據沒有 title 欄位（如 kotoba），退回顯示 task_id 避免整行空白
+		}
+		if v, ok := costs[taskID]; ok {
 			title += " · " + fmtCost(v)
 		}
 		out = append(out, fmt.Sprintf("%s [%s] %s%s", rel, get("status"), human, title))
