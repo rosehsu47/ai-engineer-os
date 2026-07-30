@@ -57,6 +57,18 @@ task_cost_table=$(awk '
   END { for (t in sum) printf "%s %.4f\n", t, sum[t] }
 ' "$REPO/.ai/supervisor/events.jsonl" 2>/dev/null)
 
+# 專案累計成本（估計值）：加總 events.jsonl 全部 cost_usd，不分 task——
+# 這是 supervisor.sh 跑過的輪次成本下限，不是真正花費：人類互動 session
+# （/ai-task、/ai-wrap 等）目前沒有機制回報自己花了多少 token，完全不
+# 計入，所以只會低估、不會高估。
+total_cost_est=$(awk '
+  { if (match($0, /"cost_usd":[0-9.]+/)) {
+      s = substr($0, RSTART, RLENGTH); gsub(/"cost_usd":/, "", s)
+      if (s+0 > 0) sum += s
+    } }
+  END { printf "%.2f", sum+0 }
+' "$REPO/.ai/supervisor/events.jsonl" 2>/dev/null)
+
 # receipts 表（最近 15 張，讀 frontmatter；每列可點開看完整內文）
 receipt_rows=$(
   find "$REPO/.ai/receipts" -name '*.md' -type f 2>/dev/null | sort -r | head -15 | while read -r f; do
@@ -137,6 +149,7 @@ cat > "$OUT" <<HTML
 <h1>🤖 AI Engineer OS — $(basename "$REPO")</h1>
 <p class="muted">狀態：$stop ｜ 產生於 $(date '+%Y-%m-%d %H:%M')（重新產生：\`dashboard.sh --repo ...\`）</p>
 <div class="cards">
+  <div class="card"><div class="v">≈ \$${total_cost_est:-0}</div><div class="k">累計成本（估計值——不含 /ai-task、/ai-wrap 等互動 session）</div></div>
   <div class="card"><div class="v">$n_backlog / $n_doing / $n_done</div><div class="k">backlog / doing / done</div></div>
   <div class="card"><div class="v">$phase</div><div class="k">checkpoint phase（第 $iteration 輪）</div></div>
   <div class="card"><div class="v">${last_task:-—}</div><div class="k">最後完成任務</div></div>
