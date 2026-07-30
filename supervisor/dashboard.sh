@@ -40,6 +40,26 @@ stop="🟢 執行中/待命"
 [ -f "$REPO/.ai/STOP" ] && stop="🔴 STOP（手動煞車中）"
 [ -f "$REPO/.ai/PAUSED" ] && stop="🟡 PAUSED（等待人類：$(head -1 "$REPO/.ai/PAUSED" 2>/dev/null | esc)）"
 
+# task 成本表：一次掃過 events.jsonl，依 task id 加總 cost_usd
+#（iteration + review 事件皆計入，見 AI-RUNTIME.md 事件模型）。bash 3.2
+# 沒有關聯陣列，用「task_id 金額」兩欄文字表存，查詢時 awk 篩單列。
+task_cost_table=$(awk '
+  {
+    task=""; cost=""
+    if (match($0, /"task":"[^"]*"/)) {
+      s = substr($0, RSTART, RLENGTH); gsub(/"task":"|"/, "", s); task = s
+    }
+    if (match($0, /"cost_usd":[0-9.]+/)) {
+      s = substr($0, RSTART, RLENGTH); gsub(/"cost_usd":/, "", s); cost = s
+    }
+    if (task != "" && task != "none" && cost != "" && cost+0 > 0) sum[task] += cost
+  }
+  END { for (t in sum) printf "%s %.4f\n", t, sum[t] }
+' "$REPO/.ai/supervisor/events.jsonl" 2>/dev/null)
+task_cost() { # task_cost <id> → 金額字串（$0.42）或空字串（查無資料）
+  printf '%s\n' "$task_cost_table" | awk -v t="$1" '$1==t{printf "$%.2f", $2}'
+}
+
 # receipts 表（最近 15 張，讀 frontmatter；每列可點開看完整內文）
 receipt_rows=$(
   find "$REPO/.ai/receipts" -name '*.md' -type f 2>/dev/null | sort -r | head -15 | while read -r f; do
@@ -54,10 +74,11 @@ receipt_rows=$(
     rid="$(basename "$(dirname "$f")")/$(basename "$f" .md)"
     anchor="r-$(printf '%s' "$rid" | tr '/' '-')"
     body=$(awk '/^---$/{n++; next} n>=2{print}' "$f" | esc)
-    printf '<tr class="receipt-row" onclick="toggleDetail('"'"'%s'"'"')"><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
+    cost=$(task_cost "$tid")
+    printf '<tr class="receipt-row" onclick="toggleDetail('"'"'%s'"'"')"><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td></tr>\n' \
       "$anchor" "$rid" \
-      "$(printf '%s' "$title" | esc)" "$badge" "$st" "${score:-—}" "$review" "${tests:-—}" "${com:-—}"
-    printf '<tr class="detail" id="%s"><td colspan="7"><pre>%s</pre></td></tr>\n' "$anchor" "$body"
+      "$(printf '%s' "${title:-$tid}" | esc)" "$badge" "$st" "${score:-—}" "$review" "${tests:-—}" "${cost:-—}" "${com:-—}"
+    printf '<tr class="detail" id="%s"><td colspan="8"><pre>%s</pre></td></tr>\n' "$anchor" "$body"
   done
 )
 
@@ -118,8 +139,8 @@ cat > "$OUT" <<HTML
   <div class="card"><div class="v">\$${run_cost:-0}</div><div class="k">上次 run 成本（${run_status:-尚未跑過}｜${run_at:-—}）</div></div>
 </div>
 <h2>📋 Receipts（最近 15）</h2>
-<table><tr><th>收據</th><th>任務</th><th>狀態</th><th>自評</th><th>獨立審查</th><th>測試</th><th>commit</th></tr>
-${receipt_rows:-<tr><td colspan=7 class=muted>還沒有收據</td></tr>}</table>
+<table><tr><th>收據</th><th>任務</th><th>狀態</th><th>自評</th><th>獨立審查</th><th>測試</th><th>成本</th><th>commit</th></tr>
+${receipt_rows:-<tr><td colspan=8 class=muted>還沒有收據</td></tr>}</table>
 <h2>✅ 已完成任務</h2>
 <table><tr><th>ID</th><th>標題</th><th>結果</th><th>收據</th></tr>
 ${done_rows:-<tr><td colspan=4 class=muted>還沒有完成的任務</td></tr>}</table>
