@@ -14,3 +14,7 @@ panel/*.test
 # this repo's own .ai/ is runtime cruft (it is not an installed workspace;
 # the real templates live in templates/ai/)
 /.ai/
+
+# local Claude Code state
+/.claude/worktrees/
+/.mcp.json
