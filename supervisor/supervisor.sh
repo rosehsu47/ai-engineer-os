@@ -20,7 +20,7 @@
 set -u
 
 # ---------- 參數與預設 ----------
-REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
+REPO="" ONCE=0 YOLO=0 WAIT_ON_PAUSE=0 WAIT_ON_PAUSE_SET=0 DRY_RUN=0 VERBOSE=0 SELF_TEST=0 REVIEW=""
 DOCTOR=0 PROBE=0 IGNORE_QUOTA=0
 MAX_ITER="" MAX_FAIL="" MODEL="" EXTRA_FLAGS=""
 QUOTA_WAIT="" QUOTA_STOP=""
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
     --claude-flags) EXTRA_FLAGS="$2"; shift 2 ;;
     --yolo) YOLO=1; shift ;;
     --review) REVIEW=true; shift ;;
-    --wait-on-pause) WAIT_ON_PAUSE=1; shift ;;
+    --wait-on-pause) WAIT_ON_PAUSE=1; WAIT_ON_PAUSE_SET=1; shift ;;
     --ignore-quota) IGNORE_QUOTA=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --self-test) SELF_TEST=1; shift ;;
@@ -631,6 +631,9 @@ MAX_COST=$(sched_get max_cost_per_run_usd 20)
 MODEL="${MODEL:-$(sched_get claude_model sonnet)}"
 SCHED_FLAGS=$(sched_get extra_claude_flags "")
 REVIEW="${REVIEW:-$(sched_get review_after_task false)}"
+if [ "$WAIT_ON_PAUSE_SET" = 0 ] && [ "$(sched_get wait_on_pause false)" = true ]; then
+  WAIT_ON_PAUSE=1
+fi
 [ "$ONCE" = 1 ] && MAX_ITER=1
 
 PERM_FLAG="--permission-mode acceptEdits"
@@ -655,7 +658,7 @@ trap 'rm -f "$LOCK"' EXIT
 if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run：repo=$REPO model=$MODEL max_iter=$MAX_ITER max_fail=$MAX_FAIL"
   echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG ignore_quota=$IGNORE_QUOTA"
-  echo "  quota_wait=${QUOTA_WAIT}% quota_stop=${QUOTA_STOP}%"
+  echo "  quota_wait=${QUOTA_WAIT}% quota_stop=${QUOTA_STOP}% wait_on_pause=${WAIT_ON_PAUSE}"
   echo "  cmd: (cd $REPO && claude -p \"/ai-work\" --output-format json --model $MODEL $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS)"
   exit 0
 fi

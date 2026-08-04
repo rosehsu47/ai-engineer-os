@@ -117,7 +117,9 @@ function card(s){
       '<button class="primary" data-act="answer" data-repo="'+esc(s.path)+'">送出回覆</button></div>'; }
   else if(s.paused && s.paused_answered){
     h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
-       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code></div>'; }
+       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
+       '<br>下次想跳過這步：用 <code>--wait-on-pause</code>（或 schedule.yml 設 '+
+       '<code>wait_on_pause: true</code>）跑，撞到 PAUSED 不會退出，回覆後它自己 5 分鐘內接著跑</div>'; }
   if(s.dirty_count>0){
     h+='<div class="dirty">⚠ working tree 有 '+s.dirty_count+' 個未 commit 檔案 —— 未記帳的工作，'+
        '互動 session 收尾記得跑 <code>/ai-wrap</code></div>'; }

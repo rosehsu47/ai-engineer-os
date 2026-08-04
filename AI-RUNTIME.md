@@ -75,7 +75,7 @@ AIOS_STATUS: <STATUS> task=<id|none> score=<0-100|na> receipt=<相對路徑|none
 | `TASK_PARTIAL` | 任務部分完成/測試修不動已退回 | 繼續下一輪 |
 | `QUEUE_EMPTY` | 佇列沒有可執行任務 | 正常結束（exit 0） |
 | `BLOCKED` | 無法進行：權限/環境阻擋（含「完全無法寫入」的免寫出口——此時什麼檔案都不碰，只印狀態行） | 繼續下一輪 |
-| `PAUSED` | 需要人類（.ai/PAUSED 已寫入問題） | 印出問題後停止（exit 2） |
+| `PAUSED` | 需要人類（.ai/PAUSED 已寫入問題） | 印出問題後停止（exit 2）；`--wait-on-pause`／schedule.yml `wait_on_pause: true` 則不退出，改每 5 分鐘輪詢直到偵測到回覆 |
 
 **PAUSED 的回覆協定**：任何介面（/ai-answer、panel 網頁、直接編輯檔案）
 把回答**附加**成 `## 人類回覆（時間）` 節即可；下一輪 /ai-work 步驟 0 讀到
