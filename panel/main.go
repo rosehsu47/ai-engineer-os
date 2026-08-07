@@ -100,15 +100,14 @@ func main() {
 		os.Exit(64)
 	}
 
-	lanInfo := ""
-	if ip := firstLANIP(); ip != "" {
-		port := (*addr)[strings.LastIndex(*addr, ":")+1:]
-		lanInfo = fmt.Sprintf("內網位址（僅供參考——panel 只綁 127.0.0.1，這個位址目前連不進來）：http://%s:%s", ip, port)
-	}
-	renderedPage := strings.Replace(pageHTML, "{{LAN_INFO}}", lanInfo, 1)
+	port := (*addr)[strings.LastIndex(*addr, ":")+1:]
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		lanInfo := ""
+		if ip := firstLANIP(); ip != "" {
+			lanInfo = fmt.Sprintf("內網位址（僅供參考——panel 只綁 127.0.0.1，這個位址目前連不進來）：http://%s:%s", ip, port)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, renderedPage)
+		fmt.Fprint(w, strings.Replace(pageHTML, "{{LAN_INFO}}", lanInfo, 1))
 	})
 	http.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		repos := currentRepos()
