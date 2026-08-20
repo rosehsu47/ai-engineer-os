@@ -24,7 +24,7 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--claude-flags "..."` | 附加給 claude CLI 的 flags |
 | `--yolo` | 用 `--dangerously-skip-permissions`（信任的 repo 才用；永不自動啟用） |
 | `--review` | 每個 DONE_TASK 後開全新 session 獨立審查（= schedule 的 `review_after_task`） |
-| `--wait-on-pause` | PAUSED 時每 5 分鐘輪詢而不是退出（= schedule 的 `wait_on_pause: true`；沒帶這個 flag 時看 schedule.yml 的值，預設 false） |
+| `--wait-on-pause` | PAUSED 時輪詢而不是退出，間隔 = schedule 的 `pause_poll_interval_seconds`（預設 30 秒）（`--wait-on-pause` = schedule 的 `wait_on_pause: true`；沒帶這個 flag 時看 schedule.yml 的值，預設 false） |
 | `--ignore-quota` | 這次跑不查 5h/7d 用量，也不寫 `.ai/STOP`；啟動時若 `.ai/STOP` 已存在**且是 quota_check 自己寫的**（第一行以 `quota ` 開頭），會先清掉再開跑——人類手動 `touch` 或其他原因寫的 STOP 不會被動到，一律留給你自己清。只影響本次呼叫，不改 `schedule.yml`。想有意衝額度（例如訂閱快到期）時用，其餘安全閥（cost breaker、max-iterations、連續失敗）照常生效 |
 | `--dry-run` | 印出將執行的設定與指令，不花額度 |
 | `--self-test` | 零額度：用內嵌 fixtures 驗證錯誤分類器與睡眠計算 |
@@ -116,7 +116,8 @@ crash 後的恢復與正常啟動是同一條路：checkpoint 會從中斷的子
 - `.ai/PAUSED` 存在 → 先回答問題（panel 或 `/ai-answer`），再重跑；
   跑之前就想好「答完要自動接著跑」的話用 `--wait-on-pause`（或
   schedule.yml 的 `wait_on_pause: true`），撞到 PAUSED 不會退出，
-  改成每 5 分鐘輪詢一次，偵測到回覆就自動繼續，不用手動重跑
+  改成每 `pause_poll_interval_seconds` 秒輪詢一次（預設 30 秒），
+  偵測到回覆就自動繼續，不用手動重跑
 - `.ai/STOP` 存在 → 確認原因（quota 煞車會把原因寫在檔內）後刪掉，再重跑
 
 若 run.log 顯示是「未知崩潰 ×3 → 退出」而輸出裡其實是額度訊息，代表

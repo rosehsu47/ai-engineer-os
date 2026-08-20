@@ -634,6 +634,7 @@ REVIEW="${REVIEW:-$(sched_get review_after_task false)}"
 if [ "$WAIT_ON_PAUSE_SET" = 0 ] && [ "$(sched_get wait_on_pause false)" = true ]; then
   WAIT_ON_PAUSE=1
 fi
+PAUSE_POLL_SECONDS=$(sched_get pause_poll_interval_seconds 30)
 [ "$ONCE" = 1 ] && MAX_ITER=1
 
 PERM_FLAG="--permission-mode acceptEdits"
@@ -658,7 +659,7 @@ trap 'rm -f "$LOCK"' EXIT
 if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run：repo=$REPO model=$MODEL max_iter=$MAX_ITER max_fail=$MAX_FAIL"
   echo "  timeout=${TIMEOUT_MIN}m sleep=${SLEEP_BETWEEN}s max_cost=\$${MAX_COST} perm=$PERM_FLAG ignore_quota=$IGNORE_QUOTA"
-  echo "  quota_wait=${QUOTA_WAIT}% quota_stop=${QUOTA_STOP}% wait_on_pause=${WAIT_ON_PAUSE}"
+  echo "  quota_wait=${QUOTA_WAIT}% quota_stop=${QUOTA_STOP}% wait_on_pause=${WAIT_ON_PAUSE} pause_poll=${PAUSE_POLL_SECONDS}s"
   echo "  cmd: (cd $REPO && claude -p \"/ai-work\" --output-format json --model $MODEL $PERM_FLAG $SCHED_FLAGS $EXTRA_FLAGS)"
   exit 0
 fi
@@ -691,7 +692,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   if [ -f "$REPO/.ai/STOP" ]; then log "發現 .ai/STOP，結束"; END_REASON=stop_flag; exit 0; fi
   if [ -f "$REPO/.ai/PAUSED" ] && ! grep -q '^## 人類回覆' "$REPO/.ai/PAUSED" 2>/dev/null; then
     log "等待人類：$(head -3 "$REPO/.ai/PAUSED" 2>/dev/null)"
-    if [ "$WAIT_ON_PAUSE" = 1 ]; then do_sleep 300; iter=$((iter-1)); continue; fi
+    if [ "$WAIT_ON_PAUSE" = 1 ]; then do_sleep "$PAUSE_POLL_SECONDS"; iter=$((iter-1)); continue; fi
     END_REASON=paused; exit 2
   fi
   if [ -f "$REPO/.ai/PAUSED" ]; then
@@ -749,7 +750,7 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
   case "$class" in
     stopped)     log "agent 回報 STOPPED"; END_REASON=stopped; exit 0 ;;
     paused)      log "agent 需要人類：$(head -3 "$REPO/.ai/PAUSED" 2>/dev/null || echo '(見 receipts)')"
-                 [ "$WAIT_ON_PAUSE" = 1 ] && { do_sleep 300; continue; } || { END_REASON=paused; exit 2; } ;;
+                 [ "$WAIT_ON_PAUSE" = 1 ] && { do_sleep "$PAUSE_POLL_SECONDS"; continue; } || { END_REASON=paused; exit 2; } ;;
     queue_empty) log "佇列空，正常收工"; END_REASON=queue_empty; exit 0 ;;
     productive)
       # 交叉驗證：agent 說有進展，checkpoint 就該被動過

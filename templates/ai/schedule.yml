@@ -25,11 +25,14 @@ quota_wait_recheck_minutes: 20
 # 想省成本的 repo 自行關閉。大型變更（>10 檔）不受此設定影響，
 # agent 立 REVIEW_REQUESTED 旗即強制審查。
 review_after_task: true
-# true = 撞到未回覆的 .ai/PAUSED 時不退出，每 5 分鐘輪詢一次，
-# 偵測到人類回覆（panel／/ai-answer 寫入的「## 人類回覆」節）就自動接著跑，
-# 不用手動重跑 supervisor.sh。預設關：無人看管長跑的 repo 建議開啟；
-# 手動盯著跑、想每次自己決定何時恢復的話留 false。
+# true = 撞到未回覆的 .ai/PAUSED 時不退出，每 pause_poll_interval_seconds
+# 秒輪詢一次，偵測到人類回覆（panel／/ai-answer 寫入的「## 人類回覆」節）
+# 就自動接著跑，不用手動重跑 supervisor.sh。預設關：無人看管長跑的 repo
+# 建議開啟；手動盯著跑、想每次自己決定何時恢復的話留 false。
 wait_on_pause: false
+# wait_on_pause 輪詢間隔（秒）。調短能更快接上人類在 panel 的回答，
+# 代價是空等時多喚醒幾次（成本可忽略——只是檢查檔案存在）。
+pause_poll_interval_seconds: 30
 claude_model: "sonnet"
 # 空白分隔的簡單 flags；值內不可含空白（supervisor 未加引號展開）
 extra_claude_flags: ""
