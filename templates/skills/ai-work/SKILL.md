@@ -104,7 +104,10 @@ checkpoint `phase: testing`。跑 CONTRACT 的測試指令；
 ### 步驟 7：自評（reviewer 視角；`.ai/rubrics/` 不存在時跳過本步）
 checkpoint `phase: evaluating`。依 task `type` 選 rubric：
 code-quality（所有程式任務）/ testing（動測試的任務）/
-architecture（新模組或 >5 檔）/ performance（type: performance）。
+architecture（新模組或 >5 檔）/ performance（type: performance）/
+content-completeness（type: docs，或本次主要產出是文件/教材/規格內容
+而非程式碼——**不得因為 type 對不上前四種就跳過本步**，docs 類任務一樣
+要選 rubric 評分，不是自動視為無 rubric 可用）。
 逐維度評分，**每個分數都要引用具體證據（檔案:行 或測試輸出）；
 拿不出證據的維度最高 2 分**。加權平均 ×25 = 0–100。
 - ≥ 80 → 過

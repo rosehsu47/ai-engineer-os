@@ -11,12 +11,12 @@
 
 | 元件 | 實作位置 | 狀態 |
 |---|---|---|
-| `.ai/` workspace 結構 | `templates/ai/`（CONTRACT.md、schedule.yml、agents/ 五角色、tasks/ 三檔、state/ 四檔、rubrics/ 四份、receipts/、reports/） | 完整 |
+| `.ai/` workspace 結構 | `templates/ai/`（CONTRACT.md、schedule.yml、agents/ 五角色、tasks/ 三檔、state/ 四檔、rubrics/ 五份、receipts/、reports/） | 完整 |
 | CONTRACT.md 長期規則＋人類核可邊界 | `templates/ai/CONTRACT.md` §7；permission deny 雙重強制 | 完整 |
 | 任務佇列 | schema 於 AI-RUNTIME.md；選取演算法在 `templates/skills/ai-work/SKILL.md` 步驟 2（priority→FIFO，`depends_on`，`attempts`） | 完整 |
 | checkpoint 持久狀態 | `templates/ai/state/checkpoint.json`；無狀態 session＋整檔重寫，恢復與正常啟動同一條路 | 完整 |
-| Supervisor 自我恢復 | `supervisor/supervisor.sh`（分類器 9 類、rate-limit 睡到 reset、網路指數退避、成本斷路器、STOP 開關、quota 軟/硬門檻、watchdog、`--self-test`） | 完整 |
-| Rubrics 自評 | `templates/ai/rubrics/` 四份，0-100 加權，≥80 過、60-79 改一輪、防吹牛條款 | 完整 |
+| Supervisor 自我恢復 | `supervisor/supervisor.sh`（分類器 9 類、rate-limit 睡到 reset、網路指數退避、成本斷路器、STOP 開關、quota 軟/硬門檻、watchdog、`--self-test`、`--doctor`/`--probe` 環境體檢） | 完整 |
+| Rubrics 自評 | `templates/ai/rubrics/` 五份（含 content-completeness，docs 類任務窮舉覆蓋度核對），0-100 加權，≥80 過、60-79 改一輪、防吹牛條款 | 完整 |
 | Receipts 稽核 | schema 於 AI-RUNTIME.md；`receipts/YYYY-MM-DD/NNN.md` | 完整 |
 | Reports | `.claude/skills/ai-report/`（日報/週報/PR 描述/changelog/履歷素材） | 完整 |
 | Multi-agent | 五 persona 在單一 `/ai-work` session 內分工＋獨立 `/ai-review` round（`templates/skills/ai-review/SKILL.md`，`supervisor --review` 觸發）；平行寫入者刻意不做（single-writer invariant） | 完整（範圍已收斂，見 §2） |
@@ -73,9 +73,6 @@ V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前
 - **C2 狀態檔機械 lint**：supervisor 加 `lint_checkpoint`/`lint_tasks`
   ——偵測歸 supervisor，修復仍歸 agent 協定自癒；`done.yaml` 救不回時
   改名保留不清空（不能用會遺失稽核軌跡的方式復原）。
-- **C3 環境體檢**：`supervisor.sh --doctor`（樹完整性、`{{` 模板殘留、
-  deny-drift、巢狀 session 警告）＋ `--probe`（headless 寫入權限實測，
-  補上 AI-RUNTIME.md 已知限制 4 提到的驗證缺口）。
 - **C4 allowlist 補洞**：`Bash(date:*)`（時間戳協定強制要求）、
   `Bash(git show:*)`（`/ai-review` 需要讀歷史 diff）。
 - **C5 receipt 宣稱機械交叉驗證（`files_changed`）**：supervisor（純
