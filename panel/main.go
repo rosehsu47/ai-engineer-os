@@ -63,6 +63,7 @@ type RepoState struct {
 	LastRunAt        string   `json:"last_run_at,omitempty"`
 	Receipts         []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
 	DashboardReady   bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
+	ScheduleReady    bool     `json:"schedule_ready"`        // .ai/schedule.yml 存在才給連結
 	DevURL           string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
 	DevCommand       string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
 	DevServerRunning bool     `json:"dev_server_running"`
@@ -246,6 +247,15 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, devLogFile(repo))
+	})
+	http.HandleFunc("/api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeFile(w, r, filepath.Join(repo, ".ai", "schedule.yml"))
 	})
 
 	fmt.Printf("aios-panel: http://%s  （repos: %d 個，清單熱重載）\n", *addr, len(currentRepos()))
@@ -598,6 +608,9 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 	// 儀表板：有舊快照可讀，或設了 -dashboard-script 可以現算，就給連結
 	_, err = os.Stat(filepath.Join(ai, "reports", "dashboard.html"))
 	s.DashboardReady = err == nil || dashboardScriptPath != ""
+	// schedule.yml：/ai-init 模板必裝，但防舊 repo drift 缺檔時連結死掉
+	_, err = os.Stat(filepath.Join(ai, "schedule.yml"))
+	s.ScheduleReady = err == nil
 	return s
 }
 
