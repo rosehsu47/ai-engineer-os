@@ -394,6 +394,11 @@ func panelStateDir() string {
 
 var devIDRe = regexp.MustCompile(`[^A-Za-z0-9]+`)
 
+// htmlCommentRe：PAUSED「## 人類回覆」節底下常見的佔位符註解（例如
+// `<!-- 回覆寫在這個標題之下… -->`），判斷是否已回覆時要先剝除，
+// 否則會被當成非空白的真人輸入。
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+
 func devServerID(path string) string {
 	return strings.Trim(devIDRe.ReplaceAllString(path, "_"), "_")
 }
@@ -560,7 +565,9 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 	// 兩種情況子字串都存在，但都還沒真的被回覆。改成：只認「行首就是
 	// `## 人類回覆`」的標題行（排除引號裡提到它的說明句），取最後一個
 	// 這樣的標題（真正的回覆一定是後來附加、在檔案最尾端），再看它底下
-	// 是否有非空白內容——有內容才算真的回覆過。
+	// 是否有非空白內容——有內容才算真的回覆過。agent 常在標題底下先塞一行
+	// `<!-- 提示文字 -->` 當佔位符（例如「回覆寫在這個標題之下…」），這種
+	// HTML 註解不是真人輸入，先剝掉再判斷是否還有剩餘內容。
 	if b, err := os.ReadFile(filepath.Join(ai, "PAUSED")); err == nil {
 		s.Paused = true
 		lines := strings.Split(string(b), "\n")
@@ -571,7 +578,8 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 			}
 		}
 		if headingIdx >= 0 {
-			s.PausedAnswered = strings.TrimSpace(strings.Join(lines[headingIdx+1:], "\n")) != ""
+			body := htmlCommentRe.ReplaceAllString(strings.Join(lines[headingIdx+1:], "\n"), "")
+			s.PausedAnswered = strings.TrimSpace(body) != ""
 			s.PausedQuestion = strings.TrimSpace(strings.Join(lines[:headingIdx], "\n"))
 		} else {
 			s.PausedAnswered = false
