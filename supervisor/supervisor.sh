@@ -753,11 +753,18 @@ while [ "$iter" -lt "$MAX_ITER" ]; do
                  [ "$WAIT_ON_PAUSE" = 1 ] && { do_sleep "$PAUSE_POLL_SECONDS"; continue; } || { END_REASON=paused; exit 2; } ;;
     queue_empty) log "佇列空，正常收工"; END_REASON=queue_empty; exit 0 ;;
     productive)
-      # 交叉驗證：agent 說有進展，checkpoint 就該被動過
+      # 交叉驗證：agent 說有進展，checkpoint 就該被動過——
+      # 但 BLOCKED 依 AIOS_STATUS 協定本來就規定「什麼檔案都不碰」
+      # （見 AI-RUNTIME.md），checkpoint 沒動是合規行為，不算違規
       mtime_after=$(stat -f %m "$ckpt" 2>/dev/null || echo 0)
       if [ "$mtime_after" = "$mtime_before" ]; then
-        consecutive_failures=$((consecutive_failures+1))
-        log "警告：回報 productive 但 checkpoint 未更新（協定違規），計失敗 $consecutive_failures/$MAX_FAIL"
+        if [ "$status_tok" = "BLOCKED" ]; then
+          consecutive_failures=0 net_retries=0
+          log "iteration ${iter}：BLOCKED（環境/權限阻擋，協定規定不碰檔案，非違規，失敗計數歸零）"
+        else
+          consecutive_failures=$((consecutive_failures+1))
+          log "警告：回報 productive 但 checkpoint 未更新（協定違規），計失敗 $consecutive_failures/$MAX_FAIL"
+        fi
       else
         consecutive_failures=0 net_retries=0
         # 多 agent 審查輪：review_after_task 開啟時每個 DONE_TASK 跑；
