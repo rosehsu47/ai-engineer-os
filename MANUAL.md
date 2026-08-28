@@ -15,9 +15,10 @@
    /ai-init          aios-panel（網頁控制台）  /ai-ship
    /ai-task          ├ 狀態總覽/待辦/收據      （push + GitHub PR）
         │            ├ 回答 PAUSED（textarea）    ▲
-        │            └ STOP 煞車按鈕              │
-        │            （＝/ai-answer、touch STOP   │
-        ▼             的同一條協定檔路徑）         │
+        │            ├ STOP 煞車按鈕              │
+        │            └ 啟動 supervisor（表單）     │
+        │            （回答/煞車＝/ai-answer、     │
+        ▼             touch STOP 的同一條協定檔路徑）  │
 ┌───────────────── 目標 repo ───────────────────────┐  │
 │  .ai/  ←──────── 唯一的狀態載體 ──────────┐  │  │
 │   ├ CONTRACT.md（規則）  ├ tasks/（佇列）  │  │  │
@@ -174,7 +175,7 @@ supervisor/schedule-install.sh --repo /path/to/repo       # 固定時刻自動�
 | 首次安裝 | `/ai-init {repo}` | 訪談 6 題填契約 |
 | 交辦工作 | `/ai-task {一句話描述}` | 選擇題定 type/priority、挑 acceptance 草稿 |
 | agent 卡住等你 | `/ai-answer` 或 **panel 問答區** | 問題＋選項呈現，回覆走同一條協定路徑 |
-| 總覽與煞車 | **`aios-panel`**（[panel/README.md](panel/README.md)） | 網頁：多 repo 狀態卡、就地回答、STOP 按鈕 |
+| 總覽與煞車 | **`aios-panel`**（[panel/README.md](panel/README.md)） | 網頁：多 repo 狀態卡、就地回答、STOP 按鈕、啟動 supervisor |
 | 出貨 | `/ai-ship {repo}` | PR 草稿先確認再推送（panel 只提示可出貨數） |
 
 **panel 快速上手**：`cd panel && go run . -repos /path/a,/path/b` →

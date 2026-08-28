@@ -13,6 +13,12 @@
 //	remote-tracking ref，不碰本地分支/工作區）——GitHub 上 PR 合併後，
 //	不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
 //	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
+//	兩個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
+//	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單——
+//	兩者都是 spawn 真的行程，不是協定檔讀寫，但都刻意跟 .ai/ 狀態切開：
+//	dev server 的 pid/log 存 ~/.aios-panel-state/，supervisor.sh 則是
+//	它自己的 `.ai/supervisor/lock`／STOP 協定照舊不變，panel 只負責照
+//	表單值組 argv 呼叫它、不額外維護一份自己的執行狀態。
 //
 // 用法：
 //
@@ -41,32 +47,36 @@ import (
 )
 
 type RepoState struct {
-	Name             string   `json:"name"`
-	Path             string   `json:"path"`
-	Missing          bool     `json:"missing"` // .ai/ 不存在
-	SupervisorAlive  bool     `json:"supervisor_alive"`
-	SupervisorPID    int      `json:"supervisor_pid,omitempty"`
-	Stopped          bool     `json:"stopped"` // .ai/STOP 存在
-	Phase            string   `json:"phase"`
-	Iteration        int      `json:"iteration"`
-	CurrentTask      string   `json:"current_task"` // doing.yaml 的 id+title
-	Backlog          []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
-	BacklogCount     int      `json:"backlog_count"`
-	DoneCount        int      `json:"done_count"`
-	Paused           bool     `json:"paused"`
-	PausedQuestion   string   `json:"paused_question,omitempty"`
-	PausedAnswered   bool     `json:"paused_answered"`
-	Shippable        int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
-	DirtyCount       int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
-	LastRunStatus    string   `json:"last_run_status,omitempty"`
-	LastRunCost      string   `json:"last_run_cost,omitempty"`
-	LastRunAt        string   `json:"last_run_at,omitempty"`
-	Receipts         []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
-	DashboardReady   bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
-	DevURL           string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
-	DevCommand       string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
-	DevServerRunning bool     `json:"dev_server_running"`
-	DevServerPID     int      `json:"dev_server_pid,omitempty"`
+	Name                string   `json:"name"`
+	Path                string   `json:"path"`
+	Missing             bool     `json:"missing"` // .ai/ 不存在
+	SupervisorAlive     bool     `json:"supervisor_alive"`
+	SupervisorPID       int      `json:"supervisor_pid,omitempty"`
+	SessionActive       bool     `json:"session_active"` // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
+	SessionPID          int      `json:"session_pid,omitempty"`
+	Stopped             bool     `json:"stopped"` // .ai/STOP 存在
+	Phase               string   `json:"phase"`
+	Iteration           int      `json:"iteration"`
+	CurrentTask         string   `json:"current_task"` // doing.yaml 的 id+title
+	Backlog             []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
+	BacklogCount        int      `json:"backlog_count"`
+	DoneCount           int      `json:"done_count"`
+	Paused              bool     `json:"paused"`
+	PausedQuestion      string   `json:"paused_question,omitempty"`
+	PausedAnswered      bool     `json:"paused_answered"`
+	Shippable           int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
+	DirtyCount          int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
+	LastRunStatus       string   `json:"last_run_status,omitempty"`
+	LastRunCost         string   `json:"last_run_cost,omitempty"`
+	LastRunAt           string   `json:"last_run_at,omitempty"`
+	Receipts            []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
+	DashboardReady      bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
+	ScheduleReady       bool     `json:"schedule_ready"`        // .ai/schedule.yml 存在才給連結
+	DevURL              string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
+	DevCommand          string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
+	DevServerRunning    bool     `json:"dev_server_running"`
+	DevServerPID        int      `json:"dev_server_pid,omitempty"`
+	SupervisorStartable bool     `json:"supervisor_startable"` // panel 有帶 -supervisor-script，可以從畫面啟動
 }
 
 // DevConfig：~/.aios-repos 每行選填的第二、三欄——dev server 網址與啟動指令。
@@ -80,12 +90,21 @@ type DevConfig struct {
 // 空字串 = 不重算，/dashboard 只讀既有的 .ai/reports/dashboard.html（若存在）。
 var dashboardScriptPath string
 
+// supervisorScriptPath：supervisor/supervisor.sh 的路徑（-supervisor-script 設定）。
+// 空字串 = 卡片不顯示「啟動 supervisor」表單，維持純讀狀態。
+var supervisorScriptPath string
+
+// allowedModels：啟動表單 model 下拉選單允許的值，避免亂傳字串給 claude CLI。
+var allowedModels = map[string]bool{"opus": true, "sonnet": true, "haiku": true}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "監聽位址（僅限本機）")
 	reposFlag := flag.String("repos", "", "逗號分隔的 repo 路徑；空 = 讀 ~/.aios-repos")
 	dashboardScript := flag.String("dashboard-script", "", "supervisor/dashboard.sh 的絕對路徑；設定後點卡片上的儀表板連結會先重算（1 分鐘內的快照直接沿用），不設就只讀既有的 .ai/reports/dashboard.html")
+	supervisorScript := flag.String("supervisor-script", "", "supervisor/supervisor.sh 的絕對路徑；設定後未執行中的 repo 卡片會多一個啟動表單（model/quota-wait/...），不設就不顯示（只能繼續用既有的 STOP/回覆）")
 	flag.Parse()
 	dashboardScriptPath = *dashboardScript
+	supervisorScriptPath = *supervisorScript
 
 	if len(loadRepos(*reposFlag)) == 0 {
 		fmt.Fprintln(os.Stderr, "沒有 repo：用 -repos /a,/b 或在 ~/.aios-repos 一行一個路徑")
@@ -247,6 +266,87 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, devLogFile(repo))
 	})
+	http.HandleFunc("/api/supervisor", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		repo, action := r.FormValue("repo"), r.FormValue("action")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		if action != "start" {
+			http.Error(w, "action 必須是 start", 400)
+			return
+		}
+		if supervisorScriptPath == "" {
+			http.Error(w, "panel 沒有帶 -supervisor-script，無法從畫面啟動", 400)
+			return
+		}
+		if alive, pid := supervisorLockStatus(repo); alive {
+			http.Error(w, fmt.Sprintf("supervisor 已經在跑（pid %d）", pid), 409)
+			return
+		}
+		if alive, pid := sessionLockStatus(repo); alive {
+			http.Error(w, fmt.Sprintf("有人正在跑 /ai-work 或 /ai-review（pid %d）——現在開 supervisor 只會立刻撞鎖收工，等它跑完再啟動", pid), 409)
+			return
+		}
+		args := []string{"--repo", repo}
+		if v := r.FormValue("model"); v != "" {
+			if !allowedModels[v] {
+				http.Error(w, "model 不合法", 400)
+				return
+			}
+			args = append(args, "--model", v)
+		}
+		for _, f := range []struct{ form, flag string }{
+			{"quota_wait", "--quota-wait"},
+			{"max_iterations", "--max-iterations"},
+			{"max_failures", "--max-failures"},
+		} {
+			if v := strings.TrimSpace(r.FormValue(f.form)); v != "" {
+				if _, err := strconv.Atoi(v); err != nil {
+					http.Error(w, f.form+" 必須是數字", 400)
+					return
+				}
+				args = append(args, f.flag, v)
+			}
+		}
+		for _, f := range []struct{ form, flag string }{
+			{"once", "--once"},
+			{"review", "--review"},
+			{"wait_on_pause", "--wait-on-pause"},
+			{"yolo", "--yolo"},
+		} {
+			if r.FormValue(f.form) == "1" {
+				args = append(args, f.flag)
+			}
+		}
+		if err := startSupervisor(repo, args); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Write([]byte("ok"))
+	})
+	http.HandleFunc("/api/supervisorlog", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeFile(w, r, supervisorLogFile(repo))
+	})
+	http.HandleFunc("/api/schedule", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeFile(w, r, filepath.Join(repo, ".ai", "schedule.yml"))
+	})
 
 	fmt.Printf("aios-panel: http://%s  （repos: %d 個，清單熱重載）\n", *addr, len(currentRepos()))
 	if err := http.ListenAndServe(*addr, nil); err != nil {
@@ -384,12 +484,94 @@ func panelStateDir() string {
 
 var devIDRe = regexp.MustCompile(`[^A-Za-z0-9]+`)
 
+// htmlCommentRe：PAUSED「## 人類回覆」節底下常見的佔位符註解（例如
+// `<!-- 回覆寫在這個標題之下… -->`），判斷是否已回覆時要先剝除，
+// 否則會被當成非空白的真人輸入。
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+
 func devServerID(path string) string {
 	return strings.Trim(devIDRe.ReplaceAllString(path, "_"), "_")
 }
 
 func devPidFile(path string) string { return filepath.Join(panelStateDir(), devServerID(path)+".pid") }
 func devLogFile(path string) string { return filepath.Join(panelStateDir(), devServerID(path)+".log") }
+
+// supervisorLogFile：panel 自己啟動的 supervisor.sh 輸出存放處。跟 dev
+// server 的 log 一樣不進 .ai/——那是純本機執行遙測，不是協定/稽核檔；
+// supervisor.sh 自己該寫的稽核紀錄（events.jsonl、receipts）照舊寫在
+// .ai/ 底下，不受影響。
+func supervisorLogFile(path string) string {
+	return filepath.Join(panelStateDir(), devServerID(path)+".supervisor.log")
+}
+
+// supervisorLockStatus 讀目標 repo 的 `.ai/supervisor/lock`（supervisor.sh
+// 自己維護、EXIT trap 保證清掉），跟 readRepo 顯示用的邏輯共用一份，
+// 也給 /api/supervisor 啟動前擋「已經在跑」用。
+func supervisorLockStatus(path string) (bool, int) {
+	b, err := os.ReadFile(filepath.Join(path, ".ai", "supervisor", "lock"))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return false, 0
+	}
+	if syscall.Kill(pid, 0) != nil {
+		return false, 0
+	}
+	return true, pid
+}
+
+// sessionLockStatus 讀 `.ai/state/session.lock`——跟 supervisor/lock 是
+// 兩層不同生命週期的鎖（見 AI-RUNTIME.md 單一寫入者不變量）：這份是
+// /ai-work、/ai-review 單次呼叫期間持有，不論呼叫者是 supervisor.sh
+// 還是人類互動 session，所以是「現在到底有沒有人正在跑一輪」的通用
+// 訊號——這正是 panel 要顯示「不管是 supervisor.sh 還是 /ai-work，
+// 現在有沒有人在執行」的資料來源。釋放時該檔案會被清空（見 skill
+// 說明），空內容或壞掉的 pid 一律視為未持有，跟 supervisorLockStatus
+// 同一套容錯邏輯。
+func sessionLockStatus(path string) (bool, int) {
+	b, err := os.ReadFile(filepath.Join(path, ".ai", "state", "session.lock"))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return false, 0
+	}
+	if syscall.Kill(pid, 0) != nil {
+		return false, 0
+	}
+	return true, pid
+}
+
+// startSupervisor：spawn supervisor.sh 本人（不是 sh -c 字串），args 全部
+// 走 argv、不經過 shell 展開——即使表單值來自 HTTP request 也沒有注入
+// 面，跟 dev server 的「使用者自維護指令字串」性質不同，不需要額外的
+// port/指令白名單。跟 dev server 一樣起獨立 process group，但**不**寫
+// panel 自己的 pidfile：`.ai/supervisor/lock` 是 supervisor.sh 自己在
+// 開跑後幾乎立刻寫入、EXIT trap 保證清掉的協定檔，狀態判斷（見上）已經
+// 夠用，不需要 panel 另外追蹤一份、多一個跟真實狀態不同步的風險。
+func startSupervisor(path string, args []string) error {
+	logf, err := os.OpenFile(supervisorLogFile(path), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(supervisorScriptPath, args...)
+	cmd.Dir = path
+	cmd.Stdout = logf
+	cmd.Stderr = logf
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		logf.Close()
+		return err
+	}
+	go func() {
+		cmd.Wait()
+		logf.Close()
+	}()
+	return nil
+}
 
 // ownPidStatus：讀 pidfile 並確認該 pid 真的還活著（同 supervisor lock
 // 的判斷手法）。pidfile 存在但程序已死＝上次沒有正常關閉，視為未執行。
@@ -509,7 +691,8 @@ func stopDevServer(path, devURL string) error {
 // ---------- 讀取協定檔（容錯優先：壞檔回空值，不 panic） ----------
 
 func readRepo(path string, devCfg DevConfig) RepoState {
-	s := RepoState{Name: filepath.Base(path), Path: path, DevURL: devCfg.URL, DevCommand: devCfg.Command}
+	s := RepoState{Name: filepath.Base(path), Path: path, DevURL: devCfg.URL, DevCommand: devCfg.Command,
+		SupervisorStartable: supervisorScriptPath != ""}
 	if devCfg.Command != "" {
 		s.DevServerRunning, s.DevServerPID = devServerStatus(path, devCfg.URL)
 	}
@@ -518,14 +701,8 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		s.Missing = true
 		return s
 	}
-	// supervisor lock
-	if b, err := os.ReadFile(filepath.Join(ai, "supervisor", "lock")); err == nil {
-		if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil {
-			if syscall.Kill(pid, 0) == nil {
-				s.SupervisorAlive, s.SupervisorPID = true, pid
-			}
-		}
-	}
+	s.SupervisorAlive, s.SupervisorPID = supervisorLockStatus(path)
+	s.SessionActive, s.SessionPID = sessionLockStatus(path)
 	_, err := os.Stat(filepath.Join(ai, "STOP"))
 	s.Stopped = err == nil
 	// checkpoint
@@ -550,7 +727,9 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 	// 兩種情況子字串都存在，但都還沒真的被回覆。改成：只認「行首就是
 	// `## 人類回覆`」的標題行（排除引號裡提到它的說明句），取最後一個
 	// 這樣的標題（真正的回覆一定是後來附加、在檔案最尾端），再看它底下
-	// 是否有非空白內容——有內容才算真的回覆過。
+	// 是否有非空白內容——有內容才算真的回覆過。agent 常在標題底下先塞一行
+	// `<!-- 提示文字 -->` 當佔位符（例如「回覆寫在這個標題之下…」），這種
+	// HTML 註解不是真人輸入，先剝掉再判斷是否還有剩餘內容。
 	if b, err := os.ReadFile(filepath.Join(ai, "PAUSED")); err == nil {
 		s.Paused = true
 		lines := strings.Split(string(b), "\n")
@@ -561,7 +740,8 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 			}
 		}
 		if headingIdx >= 0 {
-			s.PausedAnswered = strings.TrimSpace(strings.Join(lines[headingIdx+1:], "\n")) != ""
+			body := htmlCommentRe.ReplaceAllString(strings.Join(lines[headingIdx+1:], "\n"), "")
+			s.PausedAnswered = strings.TrimSpace(body) != ""
 			s.PausedQuestion = strings.TrimSpace(strings.Join(lines[:headingIdx], "\n"))
 		} else {
 			s.PausedAnswered = false
@@ -598,6 +778,9 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 	// 儀表板：有舊快照可讀，或設了 -dashboard-script 可以現算，就給連結
 	_, err = os.Stat(filepath.Join(ai, "reports", "dashboard.html"))
 	s.DashboardReady = err == nil || dashboardScriptPath != ""
+	// schedule.yml：/ai-init 模板必裝，但防舊 repo drift 缺檔時連結死掉
+	_, err = os.Stat(filepath.Join(ai, "schedule.yml"))
+	s.ScheduleReady = err == nil
 	return s
 }
 

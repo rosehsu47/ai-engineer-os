@@ -21,7 +21,7 @@
 | Reports | `.claude/skills/ai-report/`（日報/週報/PR 描述/changelog/履歷素材） | 完整 |
 | Multi-agent | 五 persona 在單一 `/ai-work` session 內分工＋獨立 `/ai-review` round（`templates/skills/ai-review/SKILL.md`，`supervisor --review` 觸發）；平行寫入者刻意不做（single-writer invariant） | 完整（範圍已收斂，見 §2） |
 | GitHub 整合 | `.claude/skills/ai-ship/`（唯一碰網路的 skill，僅限人類觸發） | 完整 |
-| Dashboard | `panel/`（Go 控制台：多 repo 狀態、回答 PAUSED、STOP、帳號用量）＋ `supervisor/dashboard.sh`（零額度靜態 HTML） | 完整 |
+| Dashboard | `panel/`（Go 控制台：多 repo 狀態、回答 PAUSED、STOP、啟動 supervisor、帳號用量）＋ `supervisor/dashboard.sh`（零額度靜態 HTML） | 完整 |
 | 事件收集 | 分散式：receipts frontmatter、`ai/queue` git log、`.ai/supervisor/` run 紀錄、`state/decisions.md` | 完整但分散（見 §2） |
 | schedule.yml | `templates/ai/schedule.yml` | 存在，但目前是 supervisor 調參檔，非時間排程（見 §2） |
 

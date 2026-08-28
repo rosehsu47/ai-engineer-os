@@ -342,7 +342,7 @@ run_probe() { # headless 寫入實測：不走 /ai-work（不吃任務、不動 
     d_ok "headless Write 放行——probe 檔已寫入並清除"
   else
     d_bad "headless 寫入失敗（probe 檔沒出現）" \
-      "AI-RUNTIME 已知限制 4：(a) 目標 repo settings.local.json 要有 Edit(**)/Write(**) allow (b) 確認不是從 Claude session 巢狀執行 (c) 信任的 repo 才考慮 --yolo。原始輸出：$pout"
+      "AI-RUNTIME 已知限制 4：(a) 目標 repo settings.local.json 要有 Edit(**) allow（Write(**) 規則不會被 Claude Code 比對到，不用重複列） (b) 確認不是從 Claude session 巢狀執行 (c) 信任的 repo 才考慮 --yolo。原始輸出：$pout"
   fi
 }
 
@@ -384,10 +384,10 @@ run_doctor() {
     if [ -n "$res" ]; then
       d_bad "settings.local.json 有未填 placeholder：$(printf '%s' "$res" | tr '\n' ' ')" "把 {{TEST_COMMAND}}/{{BUILD_COMMAND}} 換成真實指令"
     fi
-    if grep -qF '"Edit(**)"' "$tgt" && grep -qF '"Write(**)"' "$tgt"; then
-      d_ok "Edit(**)/Write(**) allow 條目在（headless 寫檔的必要條件）"
+    if grep -qF '"Edit(**)"' "$tgt"; then
+      d_ok "Edit(**) allow 條目在（headless 寫檔的必要條件）"
     else
-      d_bad "settings.local.json 缺 Edit(**) 或 Write(**) allow" "headless -p 下 acceptEdits 不足以放行——補上這兩條"
+      d_bad "settings.local.json 缺 Edit(**) allow" "headless -p 下 acceptEdits 不足以放行——補上這條（不用另外補 Write(**)，Claude Code 的權限比對只認 Edit(path) 規則，Write(path) 形式的規則不會被比對到）"
     fi
     tpl="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/templates/ai/settings.local.json"
     if [ -f "$tpl" ]; then

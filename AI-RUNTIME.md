@@ -19,13 +19,31 @@
 crash / rate-limit / 手動中斷之後的恢復，跟正常啟動是同一條路徑。
 
 **單一寫入者不變量**：同一個 repo 的 `.ai/` 狀態任何時刻只該有一個寫入
-者。`supervisor.sh` 用 `.ai/supervisor/lock`（存 pid，靠 `kill -0` 判斷
-存活）保護自己的迴圈，但 lock 本身只擋第二個 `supervisor.sh`——不會擋
-人類另開一個互動 session 跑 `/ai-task`、`/ai-wrap` 等會整檔重寫
-`tasks/*.yaml`／`state/checkpoint.json` 的 skill。這些**人類互動 skill
-在動筆前要自己讀一次 `.ai/supervisor/lock`**、確認 pid 是否存活，存活
-就用 AskUserQuestion 讓人類知道有覆寫風險並選擇是否仍要繼續，而不是靜
-靜地跟 supervisor 的 session 同時寫壞同一份檔案。
+者。兩層鎖各管各的生命週期，都存 pid、都靠 `kill -0` 判斷存活：
+
+- `.ai/supervisor/lock`：`supervisor.sh` 啟動時取得，**整個無人迴圈**
+  （可能橫跨很多輪 `/ai-work`）期間持有，退出時清掉。只擋第二個
+  `supervisor.sh` 開起來——它不知道、也不管底下單一一輪 `/ai-work` 或
+  `/ai-review` 個別跑了多久。
+- `.ai/state/session.lock`：`/ai-work`／`/ai-review` **每次被呼叫**（不論
+  呼叫者是 `supervisor.sh`、還是人類自己 `claude -p` 或互動執行）都會在
+  真正開始讀寫狀態前取得、印出最終 `AIOS_STATUS`/`AIOS_REVIEW` 行前釋放
+  （用 Write 工具清空內容，不是 `rm`——`rm` 被 deny）。這層抓的是「現在
+  這一刻到底有沒有人正在跑一輪」，粒度是單次呼叫，不是整個迴圈；
+  `supervisor.sh` 呼叫 `/ai-work` 時是循序等待每輪結束才呼叫下一輪，
+  不會自己跟自己撞，所以 `/ai-work`／`/ai-review` 只需要檢查
+  `session.lock`、不需要檢查 `supervisor/lock`。
+
+`/ai-task`、`/ai-wrap` 這類**人類互動 skill 在動筆前要把兩層鎖都讀一次**
+（任一個 pid 存活都代表有人在整檔重寫 `tasks/*.yaml`／
+`state/checkpoint.json`），用 AskUserQuestion 讓人類知道有覆寫風險並選擇
+是否仍要繼續，而不是靜靜地跟另一個 session 同時寫壞同一份檔案。
+`/ai-work`／`/ai-review` 撞到 `session.lock` 存活則不彈互動問題——兩者都
+可能被 `supervisor.sh` 用 `claude -p` headless 呼叫，沒有人類在場回答，
+一律什麼都不寫、直接印各自既有協定裡代表「這輪沒有產出」的狀態行結束
+（`/ai-work` 印 `AIOS_STATUS: BLOCKED`；`/ai-review` 沒有對應的失敗態，
+借用「沒東西可審」的 `AIOS_REVIEW: PASS task=none followup=none`，前面
+加一行說明是撞鎖跳過、不是真的審查通過）。
 
 ## `.ai/` 目錄結構
 
@@ -42,7 +60,10 @@ crash / rate-limit / 手動中斷之後的恢復，跟正常啟動是同一條�
 │   ├── checkpoint.json  斷點（每個子步驟後重寫）
 │   ├── context.md       滾動工作情境（≤100 行）
 │   ├── memory.md        長期教訓（可重用的知識才進來）
-│   └── decisions.md     架構決策紀錄（ADR-lite）
+│   ├── decisions.md     架構決策紀錄（ADR-lite）
+│   └── session.lock     單次 /ai-work、/ai-review 呼叫期間持有（存 pid，
+│                        釋放時清空內容不留 pid；跟 supervisor/lock 是
+│                        兩層鎖，見上面單一寫入者不變量說明）
 ├── rubrics/             自評量表（依 task type 選用）
 ├── agents/              /ai-work 各步驟採用的 persona 定義
 ├── receipts/YYYY-MM-DD/NNN.md   每個任務的審計收據
@@ -74,7 +95,7 @@ AIOS_STATUS: <STATUS> task=<id|none> score=<0-100|na> receipt=<相對路徑|none
 | `DONE_TASK` | 完成一個任務 | 繼續下一輪 |
 | `TASK_PARTIAL` | 任務部分完成/測試修不動已退回 | 繼續下一輪 |
 | `QUEUE_EMPTY` | 佇列沒有可執行任務 | 正常結束（exit 0） |
-| `BLOCKED` | 無法進行：權限/環境阻擋（含「完全無法寫入」的免寫出口——此時什麼檔案都不碰，只印狀態行） | 繼續下一輪 |
+| `BLOCKED` | 無法進行：權限/環境阻擋（含「完全無法寫入」的免寫出口），或撞到 `.ai/state/session.lock`（另一個 /ai-work／/ai-review 正在跑）——兩種情況都是什麼檔案都不碰，只印狀態行 | 繼續下一輪 |
 | `PAUSED` | 需要人類（.ai/PAUSED 已寫入問題） | 印出問題後停止（exit 2）；`--wait-on-pause`／schedule.yml `wait_on_pause: true` 則不退出，改每 `pause_poll_interval_seconds` 秒（預設 30）輪詢直到偵測到回覆 |
 
 **PAUSED 的回覆協定**：任何介面（/ai-answer、panel 網頁、直接編輯檔案）
@@ -107,6 +128,16 @@ AIOS_REVIEW: <PASS|FAIL> task=<id> followup=<新任務id|none>
 FAIL 時 reviewer **不自己修**——把修正任務（priority 1）排進 backlog，
 下一輪 /ai-work 自然接手；審查判定同時附加在受審 receipt 尾端。
 這維持了單一寫手不變量：任何時刻只有一個 session 在改程式碼。
+
+**修正引用/事實類的 followup 任務，acceptance 必須附明確依據來源**：
+若這個 followup 任務是要修正上一版對某個事實、數字、或引用內容的認定
+（而非新增功能或修一般 bug 邏輯），acceptance 至少要有一條要求「改動處
+附一句明確引用依據，指出根據哪個既有檔案/欄位的內容判定」——reviewer
+自己這一輪的判斷不算依據，必須回溯到最原始的事實來源（例如另一份任務
+定義、schema、或原始需求文件）。原因：fresh session 審查彼此不共享
+context，若某一輪 review 看漏了原始依據就下判定，下一輪執行者若照單
+全收、不回頭核對，會把本來正確的內容改壞；沒有依據引用時，這種錯誤要
+再等一輪 review 才會被抓到，多耗一輪的成本。
 
 ## checkpoint.json schema
 
