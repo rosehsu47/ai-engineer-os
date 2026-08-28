@@ -338,6 +338,23 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, supervisorLogFile(repo))
 	})
+	http.HandleFunc("/api/backlog", func(w http.ResponseWriter, r *http.Request) {
+		// /api/state 只送前 5 筆待辦（避免大 backlog 拖慢每 5 秒的輪詢），
+		// 這支給卡片上的「顯示全部」按鈕按需抓完整清單，不進常態輪詢路徑。
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		ai := filepath.Join(repo, ".ai")
+		costs := taskCosts(filepath.Join(ai, "supervisor"))
+		full, _ := taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 0)
+		for i, t := range full {
+			full[i] = withCost(t, costs)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(full)
+	})
 	http.HandleFunc("/api/schedule", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
 		if !allowed(currentRepos(), repo) {
