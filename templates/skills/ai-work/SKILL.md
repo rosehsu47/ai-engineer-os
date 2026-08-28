@@ -24,11 +24,25 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
 - 每完成一個子步驟就更新 checkpoint 的 `task_step`（你隨時可能被殺，
   下一個 session 靠它續作）
 - 只 `git add` 你為了這個任務修改的檔案，**禁止 `git add -A`**
+- **除了 `.ai/STOP` 判定那一步**（此時還沒取得 lock），本輪全程持有
+  `.ai/state/session.lock`（見步驟 0）——任何結束分支印出最終
+  `AIOS_STATUS` 那一行之前，都要用 Write 工具把它**清空內容**（不是
+  `rm`，理由同 `.ai/PAUSED` 的清法：`Bash(rm:*)` 被硬 deny）
 
 ## 演算法
 
 ### 步驟 0：守門
 - `.ai/STOP` 存在 → 印 `AIOS_STATUS: STOPPED task=none score=na receipt=none`，結束（什麼都不寫）
+- **取得 session lock**：讀 `.ai/state/session.lock`，若存在且其中的
+  pid 用 `kill -0 <pid>` 確認還活著 → 代表另一個 `/ai-work`／`/ai-review`
+  呼叫正在跑，**什麼都不寫**，在狀態行之前說明撞到的 pid，印
+  `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，結束。lock 不
+  存在或 pid 已死 → 用 Write 工具把自己的 pid 寫進
+  `.ai/state/session.lock`（headless 呼叫用 `echo $$`；互動 session 用
+  當前 shell 的 pid），繼續。**不查 `.ai/supervisor/lock`**——
+  `supervisor.sh` 呼叫 `/ai-work` 是循序等待每輪結束才呼叫下一輪，不會
+  自己跟自己撞，那份 lock 管的是另一件事（見 AI-RUNTIME.md 單一寫入者
+  不變量）
 - `.ai/PAUSED` 存在：
   - **含 `## 人類回覆` 節** → 先消化回覆再繼續：把決定路由到正確的地方
     （影響某任務的做法 → 附記進該任務 `description`，前綴「人類回覆（日期）：」，
@@ -40,9 +54,9 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
     這個 mv 是唯一保證不撞權限的清法，繼續步驟 1
   - 沒有回覆節 → 印 `AIOS_STATUS: PAUSED task=none score=na receipt=none`，結束
 - **完全無法寫入**（Edit/Write 全被權限擋、連 `.ai/` 都寫不了）→
-  不再嘗試任何寫入（含 `.ai/PAUSED`——它也寫不進去），直接印
-  `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，並在狀態行之前
-  用一段文字說明被擋的具體工具與路徑，結束。這是唯一的免寫出口。
+  不再嘗試任何寫入（含 `.ai/PAUSED`、也含清空 session lock——反正都寫不
+  進去），直接印 `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，
+  並在狀態行之前用一段文字說明被擋的具體工具與路徑，結束
 
 ### 步驟 1：載入狀態
 讀 `.ai/CONTRACT.md`、`.ai/state/checkpoint.json`、`.ai/state/context.md`。

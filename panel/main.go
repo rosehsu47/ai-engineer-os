@@ -52,6 +52,8 @@ type RepoState struct {
 	Missing             bool     `json:"missing"` // .ai/ 不存在
 	SupervisorAlive     bool     `json:"supervisor_alive"`
 	SupervisorPID       int      `json:"supervisor_pid,omitempty"`
+	SessionActive       bool     `json:"session_active"` // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
+	SessionPID          int      `json:"session_pid,omitempty"`
 	Stopped             bool     `json:"stopped"` // .ai/STOP 存在
 	Phase               string   `json:"phase"`
 	Iteration           int      `json:"iteration"`
@@ -286,6 +288,10 @@ func main() {
 			http.Error(w, fmt.Sprintf("supervisor 已經在跑（pid %d）", pid), 409)
 			return
 		}
+		if alive, pid := sessionLockStatus(repo); alive {
+			http.Error(w, fmt.Sprintf("有人正在跑 /ai-work 或 /ai-review（pid %d）——現在開 supervisor 只會立刻撞鎖收工，等它跑完再啟動", pid), 409)
+			return
+		}
 		args := []string{"--repo", repo}
 		if v := r.FormValue("model"); v != "" {
 			if !allowedModels[v] {
@@ -516,6 +522,29 @@ func supervisorLockStatus(path string) (bool, int) {
 	return true, pid
 }
 
+// sessionLockStatus 讀 `.ai/state/session.lock`——跟 supervisor/lock 是
+// 兩層不同生命週期的鎖（見 AI-RUNTIME.md 單一寫入者不變量）：這份是
+// /ai-work、/ai-review 單次呼叫期間持有，不論呼叫者是 supervisor.sh
+// 還是人類互動 session，所以是「現在到底有沒有人正在跑一輪」的通用
+// 訊號——這正是 panel 要顯示「不管是 supervisor.sh 還是 /ai-work，
+// 現在有沒有人在執行」的資料來源。釋放時該檔案會被清空（見 skill
+// 說明），空內容或壞掉的 pid 一律視為未持有，跟 supervisorLockStatus
+// 同一套容錯邏輯。
+func sessionLockStatus(path string) (bool, int) {
+	b, err := os.ReadFile(filepath.Join(path, ".ai", "state", "session.lock"))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return false, 0
+	}
+	if syscall.Kill(pid, 0) != nil {
+		return false, 0
+	}
+	return true, pid
+}
+
 // startSupervisor：spawn supervisor.sh 本人（不是 sh -c 字串），args 全部
 // 走 argv、不經過 shell 展開——即使表單值來自 HTTP request 也沒有注入
 // 面，跟 dev server 的「使用者自維護指令字串」性質不同，不需要額外的
@@ -673,6 +702,7 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		return s
 	}
 	s.SupervisorAlive, s.SupervisorPID = supervisorLockStatus(path)
+	s.SessionActive, s.SessionPID = sessionLockStatus(path)
 	_, err := os.Stat(filepath.Join(ai, "STOP"))
 	s.Stopped = err == nil
 	// checkpoint

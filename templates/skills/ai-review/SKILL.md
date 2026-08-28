@@ -11,14 +11,25 @@ description: AI Engineer OS 的獨立審查輪：用全新 session 審查上一�
 
 ## 鐵律
 
-- 你只能寫這三個地方：受審 receipt 的尾端（附加審查節）、
-  `tasks/backlog.yaml`（開修正任務）、`state/context.md`（≤2 行）
+- 你只能寫這四個地方：受審 receipt 的尾端（附加審查節）、
+  `tasks/backlog.yaml`（開修正任務）、`state/context.md`（≤2 行）、
+  `state/session.lock`（見步驟 0——單次呼叫期間的 session lock）
 - **絕不修改程式碼**、絕不 commit 程式碼、絕不動其他任務
 - 最後一行輸出必是：
   `AIOS_REVIEW: <PASS|FAIL> task=<id> followup=<新任務id|none>`
+- 除了下面步驟 0 撞鎖那個分支，本輪全程持有 `.ai/state/session.lock`
+  ——任何結束分支印出最終 `AIOS_REVIEW` 行之前，都要用 Write 工具把它
+  **清空內容**（不是 `rm`，`Bash(rm:*)` 被硬 deny）
 
 ## 步驟
 
+0. **取得 session lock**：讀 `.ai/state/session.lock`，若存在且其中的
+   pid 用 `kill -0 <pid>` 確認還活著 → 代表另一個 `/ai-work`／`/ai-review`
+   呼叫正在跑，**什麼都不寫**，印 `AIOS_REVIEW: PASS task=none
+   followup=none`（前面說明是撞鎖跳過、不是真的審查通過），結束。lock
+   不存在或 pid 已死 → 寫進自己的 pid（headless 呼叫用 `echo $$`；互動
+   session 用當前 shell 的 pid），繼續。**不查 `.ai/supervisor/lock`**
+   ——理由同 `/ai-work`，見 AI-RUNTIME.md 單一寫入者不變量
 1. 讀 `.ai/state/checkpoint.json` 的 `last_completed_task_id` 與
    `last_receipt`、`last_commit`。任一為空 → 印
    `AIOS_REVIEW: PASS task=none followup=none`（沒東西可審），結束

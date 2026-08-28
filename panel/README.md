@@ -47,9 +47,12 @@ repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 
 位址目前連不進來；要從手機/其他裝置連，需要額外的 tunnel 並自行評估
 沒有認證這件事的風險）。
 
-卡片依狀態分成 5 組顯示（依需要處理的急迫度排序，組與組之間有標題列）：
-❓ 需要你回覆 → 🔴 已煞車 → 🟢 執行中 → 🔵 已回覆待下一輪 → ⚪ 待命
-（尚未 `/ai-init` 的 repo 額外獨立一組排最後）。
+卡片依狀態分成 6 組顯示（依需要處理的急迫度排序，組與組之間有標題列）：
+❓ 需要你回覆 → 🔴 已煞車 → 🟢 執行中 → 🔵 已回覆待下一輪 → ⚪ 待命 →
+⚫ 無待辦（尚未 `/ai-init` 的 repo 額外獨立一組排最後）。⚪ 待命跟
+⚫ 無待辦的差別只在 backlog 是否為空——⚫ 沒有排隊中的任務，就算按了
+「啟動 supervisor」也只會立刻因為 `QUEUE_EMPTY` 收工，用不同分類提醒
+「這張卡不用你操心，但也沒什麼好啟動的」。
 
 **鍵盤導覽**：`j`/`k` 或 ↑/↓ 跨分組切換卡片焦點（藍色外框標示目前選中的
 卡）；`Enter`——該卡有待回覆問題就把游標直接送進回覆欄位，沒有就捲動
@@ -57,12 +60,22 @@ repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 
 repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
 
 每個 repo 一張卡：
-- 狀態燈：🟢 執行中（含 pid）／⚪ 待命／❓ 等你回答／🔵 已回覆待下一輪／🔴 已煞車
+- 狀態燈：🟢 執行中（含 pid）／⚪ 待命／⚫ 無待辦／❓ 等你回答／
+  🔵 已回覆待下一輪／🔴 已煞車。🟢 執行中**不分是 supervisor.sh 還是
+  互動 session**——兩種鎖（`.ai/supervisor/lock`、`.ai/state/session.lock`，
+  見 `AI-RUNTIME.md` 單一寫入者不變量）任一個活著就算執行中，卡片內文
+  會註明是哪一種（supervisor 給 pid+log 連結；互動 session 只給 pid，
+  沒有 log 檔可看）。**`session.lock` 是 `/ai-work`／`/ai-review` 自己
+  寫的**，只有跑過 `/ai-sync` 補到最新 skill 版本的 repo 才會有這個訊
+  號——舊 repo 沒同步之前，互動 session 執行中不會反映在這裡，只有
+  supervisor.sh 那條腿看得到
 - checkpoint phase 與輪數、上輪結果與成本
 - **啟動 supervisor**（有帶 `-supervisor-script`、目前沒在跑、也沒被 STOP
-  時才出現）：等同 `supervisor/supervisor.sh --repo <repo> ...`，表單開放
-  `--model`（opus/sonnet/haiku 下拉）、`--quota-wait`、`--max-iterations`、
-  `--max-failures`，以及 `--once`／`--review`／`--wait-on-pause`／`--yolo`
+  時才出現；有互動 session 在跑時也不出現，現在啟動只會立刻撞
+  session lock 收工）：等同 `supervisor/supervisor.sh --repo <repo> ...`，
+  表單開放 `--model`（opus/sonnet/haiku 下拉）、`--quota-wait`、
+  `--max-iterations`、`--max-failures`，以及
+  `--once`／`--review`／`--wait-on-pause`／`--yolo`
   四個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
   `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行中會顯示 pid 與
   log 連結（純文字，開新分頁看 stdout/stderr）；**停止用卡片下方既有的

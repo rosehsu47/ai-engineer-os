@@ -23,7 +23,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .repo.expanded .chevron{transform:rotate(90deg)}
  .rbody{padding:6px 22px 22px;border-top:1px solid #2a3654;display:flex;flex-direction:column}
  .dot{width:8px;height:8px;border-radius:99px;display:inline-block;flex-shrink:0}
- .running{background:#34d399}.idle{background:#64748b}.stopped{background:#ef4444}.paused{background:#f59e0b}.waiting{background:#38bdf8}.missing{background:#334155}
+ .running{background:#34d399}.idle{background:#64748b}.nobacklog{background:#475569}.stopped{background:#ef4444}.paused{background:#f59e0b}.waiting{background:#38bdf8}.missing{background:#334155}
  .status-header{font-size:13px;font-weight:700;color:#e2e8f0;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid #263047;display:flex;align-items:center;gap:8px}
  .status-header:first-child{margin-top:0}
  .status-header .count{font-weight:400;color:#8b98ac;font-size:12px}
@@ -112,12 +112,13 @@ function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
 function statusOf(s){ if(s.missing) return 'missing';
   if(s.stopped) return 'stopped';
   if(s.paused && !s.paused_answered) return 'paused';
-  if(s.supervisor_alive) return 'running';
+  if(s.supervisor_alive || s.session_active) return 'running';
   if(s.paused) return 'waiting';
+  if(s.backlog_count===0) return 'nobacklog';
   return 'idle'; }
-const STATUS_ORDER=['paused','stopped','running','waiting','idle','missing'];
+const STATUS_ORDER=['paused','stopped','running','waiting','idle','nobacklog','missing'];
 const STATUS_LABEL={paused:'❓ 需要你回覆',stopped:'🔴 已煞車',running:'🟢 執行中',
-  waiting:'🔵 已回覆，待下一輪',idle:'⚪ 待命',missing:'⬜ 尚未 /ai-init'};
+  waiting:'🔵 已回覆，待下一輪',idle:'⚪ 待命',nobacklog:'⚫ 無待辦',missing:'⬜ 尚未 /ai-init'};
 function splitId(s){ const i=(s||'').indexOf(' '); if(i<0) return [s||'','']; return [s.slice(0,i), s.slice(i+1)]; }
 // rowMeta：收合列的一行摘要，依狀態挑最有資訊量的內容顯示。
 function rowMeta(s){
@@ -125,8 +126,10 @@ function rowMeta(s){
   if(s.stopped) return 'stopped · 第'+s.iteration+' 輪';
   if(s.paused && !s.paused_answered) return (s.paused_question||'').split('\n')[0];
   if(s.supervisor_alive) return (s.phase||'executing')+' · pid '+s.supervisor_pid+(s.current_task?' · '+splitId(s.current_task)[1]:'');
+  if(s.session_active) return '互動執行中 · pid '+s.session_pid+(s.current_task?' · '+splitId(s.current_task)[1]:'');
   if(s.paused) return '已回覆，待下一輪消化';
   if(s.current_task) return splitId(s.current_task)[1];
+  if(s.backlog_count===0) return '無待辦 · 第'+s.iteration+' 輪';
   return '待命 · 第'+s.iteration+' 輪'; }
 // relTime：last_run_at（supervisor 本機時間，無時區字尾）轉相對時間，
 // 純本機使用場景，跟瀏覽器同一時區，不用另外處理時區轉換。
@@ -159,6 +162,15 @@ function supervisorBox(s){
     return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
       '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
       ' <span class="muted">· 用下方 STOP 按鈕煞車</span></div>';
+  }
+  // session_active 但不是 supervisor：有人正在互動跑 /ai-work 或
+  // /ai-review（.ai/state/session.lock 存活）——沒有 log 檔可看（那是
+  // supervisor 專屬的 panel 本機檔案），也不給啟動表單，現在開下去只會
+  // 立刻撞 session lock 收工（/api/supervisor 也會擋，這裡先不讓使用者
+  // 白跑一趟）。
+  if(s.session_active){
+    return '<div class="row">🧑‍💻 有人正在互動執行（pid '+s.session_pid+'） '+
+      '<span class="muted">· /ai-work 或 /ai-review，現在啟動 supervisor 只會撞鎖</span></div>';
   }
   if(!s.supervisor_startable || s.stopped) return '';
   return '<div class="supform" data-repo="'+esc(s.path)+'">'+
