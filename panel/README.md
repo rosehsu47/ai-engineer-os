@@ -17,6 +17,15 @@ aios-panel -repos /path/a,/path/b \
   -dashboard-script /path/to/ai-engineer-os/supervisor/dashboard.sh
 ```
 
+想讓沒在跑的 repo 卡片上出現「啟動 supervisor」表單（見下），再多帶一個 flag：
+
+```bash
+aios-panel -repos /path/a,/path/b \
+  -supervisor-script /path/to/ai-engineer-os/supervisor/supervisor.sh
+```
+
+兩個 `-*-script` flag 可以一起帶。
+
 repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 進去
 （/ai-init 收尾會自動做）5 秒內卡片就出現，panel 不用重啟。
 
@@ -50,6 +59,15 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
 每個 repo 一張卡：
 - 狀態燈：🟢 執行中（含 pid）／⚪ 待命／❓ 等你回答／🔵 已回覆待下一輪／🔴 已煞車
 - checkpoint phase 與輪數、上輪結果與成本
+- **啟動 supervisor**（有帶 `-supervisor-script`、目前沒在跑、也沒被 STOP
+  時才出現）：等同 `supervisor/supervisor.sh --repo <repo> ...`，表單開放
+  `--model`（opus/sonnet/haiku 下拉）、`--quota-wait`、`--max-iterations`、
+  `--max-failures`，以及 `--once`／`--review`／`--wait-on-pause`／`--yolo`
+  四個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
+  `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行中會顯示 pid 與
+  log 連結（純文字，開新分頁看 stdout/stderr）；**停止用卡片下方既有的
+  STOP 按鈕**（寫 `.ai/STOP`，supervisor.sh 自己的迴圈本來就會偵測），
+  不重做一個停止鍵
 - 進行中任務、待辦前 5 筆＋總數、完成數、最近 3 張收據
 - **dev server 啟動/停止**（第三欄設了指令才會出現）：▶ 啟動／■ 停止
   按鈕＋執行中/未啟動狀態，執行中會顯示 pid 與一個 log 連結（純文字，
@@ -75,8 +93,10 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - **出貨（git push）與 merge 永遠不在 panel 裡發生**——那是對外動作，
   留在你的終端機與 GitHub
 
-**dev server 啟動/停止是唯一的例外**——它不是協定檔讀寫，而是真的會在
-本機 spawn 一個長駐行程。刻意跟協定狀態分開處理，把風險收斂到最小：
+**有兩個例外真的會在本機 spawn 長駐/一次性行程，不是協定檔讀寫**——
+刻意跟協定狀態分開處理，把風險收斂到最小：
+
+**dev server 啟動/停止**：
 - 指令只能來自你自己維護的 `~/.aios-repos`（本機檔案，不是網路輸入、
   agent 也不會寫它），不存在指令注入的外部攻擊面
 - pid/log 檔存在 `~/.aios-panel-state/`，完全不碰目標 repo 的 `.ai/`——
@@ -90,5 +110,20 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
   panel 沒有可控制的 pid，停止鍵會如實回報「不是我啟動的，你自己關」，
   不會假裝關掉了
 
-所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的協定狀態（dev
-server 是唯一會留下本機執行副作用的功能，跟 `.ai/` 協定本身無關）。
+**啟動 supervisor**（需 `-supervisor-script`，見上）：
+- 表單值全部走 `exec.Command` 的 argv、不經過 shell 字串展開，跟
+  dev server「使用者自維護指令字串」性質不同，本來就沒有指令注入面；
+  `--model` 額外限制只能是 opus/sonnet/haiku 白名單，其餘數字欄位驗證
+  是合法整數才放行
+- 啟動前用 `.ai/supervisor/lock` 檔擋「已經在跑」，跟 supervisor.sh
+  自己的單 repo 單 supervisor 鎖是同一份，不會重複啟動
+- panel **不**額外維護一份自己的 pid/存活狀態——`.ai/supervisor/lock`
+  是 supervisor.sh 自己寫入、EXIT trap 保證清掉的協定檔，卡片上的
+  🟢/⚪ 狀態本來就讀這份，啟動表單只是幫你把指令組好、按下去
+- 沒有獨立的停止鍵——用卡片下方既有的 STOP 按鈕（寫 `.ai/STOP`），
+  跟你自己在終端機 `touch .ai/STOP` 效果相同，supervisor.sh 的迴圈本來
+  就會偵測。log 只到 `~/.aios-panel-state/`，不影響 `.ai/` 底下
+  supervisor.sh 自己寫的 events/receipts 稽核紀錄
+
+所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的協定狀態（這兩個
+才是會留下本機執行副作用的功能，都跟 `.ai/` 協定本身的正確性無關）。
