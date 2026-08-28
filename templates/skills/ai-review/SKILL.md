@@ -23,13 +23,16 @@ description: AI Engineer OS 的獨立審查輪：用全新 session 審查上一�
 
 ## 步驟
 
-0. **取得 session lock**：讀 `.ai/state/session.lock`，若存在且其中的
-   pid 用 `kill -0 <pid>` 確認還活著 → 代表另一個 `/ai-work`／`/ai-review`
-   呼叫正在跑，**什麼都不寫**，印 `AIOS_REVIEW: PASS task=none
-   followup=none`（前面說明是撞鎖跳過、不是真的審查通過），結束。lock
-   不存在或 pid 已死 → 寫進自己的 pid（headless 呼叫用 `echo $$`；互動
-   session 用當前 shell 的 pid），繼續。**不查 `.ai/supervisor/lock`**
-   ——理由同 `/ai-work`，見 AI-RUNTIME.md 單一寫入者不變量
+0. **取得 session lock**：讀 `.ai/state/session.lock`，若存在、其中的
+   pid 用 `kill -0 <pid>` 確認還活著、**且**檔案 mtime 在 2 小時內 →
+   代表另一個 `/ai-work`／`/ai-review` 呼叫正在跑，**什麼都不寫**，印
+   `AIOS_REVIEW: PASS task=none followup=none`（前面說明是撞鎖跳過、
+   不是真的審查通過），結束。**兩個條件缺一都視為未持有**（lock 不
+   存在／pid 已死／mtime 超過 2 小時——上一個呼叫被砍掉沒清 lock、pid
+   還可能被系統回收給不相干的行程，只信 `kill -0` 會誤判）→ 寫進自己
+   的 pid（headless 呼叫用 `echo $$`；互動 session 用當前 shell 的
+   pid），繼續。**不查 `.ai/supervisor/lock`**——理由同 `/ai-work`，
+   見 AI-RUNTIME.md 單一寫入者不變量
 1. 讀 `.ai/state/checkpoint.json` 的 `last_completed_task_id` 與
    `last_receipt`、`last_commit`。任一為空 → 印
    `AIOS_REVIEW: PASS task=none followup=none`（沒東西可審），結束

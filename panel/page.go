@@ -232,7 +232,18 @@ function cardBody(s){
      '<span class="bar"><i style="width:'+pct+'%"></i></span><span class="pct">'+pct+'%</span></div>';
   if(s.current_task){ h+='<div class="section-label">進行中</div>'+taskRow('task-card',s.current_task); }
   h+='<div class="section-label">待辦 '+s.backlog_count+' / 完成 '+s.done_count+'</div>';
-  if((s.backlog||[]).length) h+=s.backlog.map(t=>taskRow('task-row',t)).join('');
+  // expandedBacklogs[repo] 存的是「顯示全部」按過之後抓回來的完整清單
+  // （見下方 backlogtoggle 事件）；沒按過就只有 /api/state 附的前 5 筆。
+  // 5 秒重繪時 cardBody() 每次都重跑，這個 module-level 變數不會被清掉，
+  // 所以展開狀態會一直維持到使用者自己收合。
+  const full = expandedBacklogs[s.path];
+  const list = full || s.backlog || [];
+  if(list.length) h+=list.map(t=>taskRow('task-row',t)).join('');
+  if(s.backlog_count > 5){
+    h += full
+      ? '<button type="button" class="adv-toggle" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">收合，只顯示前 5 筆 ▴</button>'
+      : '<button type="button" class="adv-toggle" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">顯示全部 '+s.backlog_count+' 筆待辦 ▾</button>';
+  }
   if((s.receipts||[]).length){ h+='<div class="section-label">最近收據</div>'+
     '<div class="receipts">'+s.receipts.map(receiptRow).join('')+'</div>'; }
   if(s.paused && !s.paused_answered){
@@ -348,6 +359,9 @@ function groupHeader(key,count){
 // 因為分組會隨狀態變動增減，index 撐不住。autoExpandDone 只在第一次
 // 拿到資料時，把最急迫分組的第一筆自動展開，之後尊重使用者手動選擇。
 let focusedRepo=null, expandedRepo=null, autoExpandDone=false, renderOrder=[], lastList=[];
+// expandedBacklogs：repo path -> 完整待辦清單（按過「顯示全部」才有），
+// 見 cardBody() 的待辦區塊與下面的 backlogtoggle 事件。
+let expandedBacklogs={};
 function applyFocusHighlight(){
   document.querySelectorAll('.repo[data-repo]').forEach(el=>{
     el.classList.toggle('focused', el.dataset.repo===focusedRepo); }); }
@@ -423,7 +437,7 @@ async function refreshUsage(){
 // handler。button[data-act] 優先判斷，避免點展開內容裡的按鈕誤觸收合列
 // 的展開/收合（兩者是兄弟節點，不會互相 closest() 到，這裡順序純粹是
 // 防禦性寫法）。
-document.getElementById('grid').addEventListener('click', e=>{
+document.getElementById('grid').addEventListener('click', async e=>{
   if(e.target.closest('a.icon-btn')) return; // 讓連結自己開新分頁，不觸發收合列展開/收合
   const b=e.target.closest('button[data-act]');
   if(b){
@@ -432,6 +446,19 @@ document.getElementById('grid').addEventListener('click', e=>{
       const box=b.closest('.supform'), adv=box.querySelector('.adv');
       adv.hidden=!adv.hidden;
       b.textContent = adv.hidden ? '進階設定 ▾' : '進階設定 ▴';
+    } else if(b.dataset.act==='backlogtoggle'){
+      if(expandedBacklogs[repo]){
+        delete expandedBacklogs[repo];
+        renderList();
+      } else {
+        b.disabled=true; b.textContent='載入中…';
+        try{
+          const r=await fetch('/api/backlog?repo='+encodeURIComponent(repo));
+          if(!r.ok) throw new Error(await r.text());
+          expandedBacklogs[repo]=await r.json();
+        }catch(err){ alert('讀取待辦列表失敗：'+err); }
+        renderList();
+      }
     } else if(b.dataset.act==='answer'){
       const t=b.closest('.qa').querySelector('textarea').value;
       if(t.trim()) post('/api/answer',{repo:repo,text:t});
