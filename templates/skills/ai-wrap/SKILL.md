@@ -13,13 +13,15 @@ description: 互動 session 收帳——把這輪對話直接改的程式碼收�
 ## 流程
 
 0. **檢查兩層鎖**：讀 `.ai/supervisor/lock`（supervisor.sh 整個無人迴圈
-   期間持有）與 `.ai/state/session.lock`（單次 `/ai-work`／`/ai-review`
-   呼叫期間持有），各自存在就取 pid、`kill -0 <pid>` 確認還活著。任一個
-   活著都代表有 session 正在跑，它跟這個 skill 都會整檔重寫
+   期間持有，存活只看 `kill -0`）與 `.ai/state/session.lock`（單次
+   `/ai-work`／`/ai-review` 呼叫期間持有，存活要**同時**滿足
+   `kill -0 <pid>` 成功**且**檔案 mtime 在 2 小時內——超時視為孤兒 lock，
+   不管 pid 是否碰巧「活著」，因為它可能已被系統回收給不相干的行程）。
+   任一個判定為活著都代表有 session 正在跑，它跟這個 skill 都會整檔重寫
    `done.yaml`／改動同一批 checkpoint 狀態檔——同時寫會互撞（單一寫入
    者不變量，見 AI-RUNTIME.md）。用 AskUserQuestion 讓使用者選：等它跑
-   完再收帳（推薦）／仍要現在收帳（講清楚有覆寫風險）。兩份 lock 都不
-   存在或 pid 都已死就正常往下走。
+   完再收帳（推薦）／仍要現在收帳（講清楚有覆寫風險）。兩份鎖都判定
+   未持有就正常往下走。
 1. **盤點**：`git status --porcelain` 列出未 commit 的變更。
    - 全空 → 檢查是否有「已 commit 但沒 receipt」的情況（最近的
      `[T-NNN]` commit 是否在 done.yaml 有對應條目）；都齊了就告知

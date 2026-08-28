@@ -11,13 +11,15 @@ description: 用問答/選擇題引導的方式新增任務到 .ai/tasks/backlog
 ## 流程
 
 0. **檢查兩層鎖**：讀 `.ai/supervisor/lock`（supervisor.sh 整個無人迴圈
-   期間持有）與 `.ai/state/session.lock`（單次 `/ai-work`／`/ai-review`
-   呼叫期間持有），各自存在就取其中的 pid、用 `kill -0 <pid>` 確認還活
-   著。任一個活著都代表有 session 正在這個 repo 跑，隨時可能整檔重寫
+   期間持有，存活只看 `kill -0`）與 `.ai/state/session.lock`（單次
+   `/ai-work`／`/ai-review` 呼叫期間持有，存活要**同時**滿足
+   `kill -0 <pid>` 成功**且**檔案 mtime 在 2 小時內——超時視為孤兒 lock，
+   不管 pid 是否碰巧「活著」，因為它可能已被系統回收給不相干的行程）。
+   任一個判定為活著都代表有 session 正在這個 repo 跑，隨時可能整檔重寫
    `backlog.yaml`——這個 skill 最後一步也是整檔重寫，兩邊同時寫會互相
    蓋掉（單一寫入者不變量，見 AI-RUNTIME.md）。用 AskUserQuestion 讓使
    用者選：等它跑完再種任務（推薦）／仍要現在寫入（講清楚有覆寫風
-   險）。兩份 lock 都不存在或 pid 都已死就正常往下走。
+   險）。兩份鎖都判定未持有就正常往下走。
 1. **聽需求**：使用者沒附描述就先問「想讓 agent 做什麼？」（自由文字）
 2. **起草**：根據描述起草整筆任務，然後用選擇題確認三件事：
    - `type`：feature / fix / chore / test / docs / architecture / performance

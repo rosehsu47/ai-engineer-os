@@ -37,3 +37,10 @@ description）。只寫「這個專案特有的、直覺會出錯的地方」。
 - **根因**：macOS 系統內建 bash 是 3.2（2007 年的版本），解析 `$var` 後面緊鄰的多位元組字元時會把它併入變數名去查找，而不是當成變數名結束的邊界字元
 - **修法**：`scripts/gen-changelog.sh` 的 `echo "已重新產生 $OUT（掃了..."` 改成 `${OUT}（...`。一般解法：任何 zh-Hant 訊息字串裡，`$var` 後面緊接非 ASCII 字元（全形括號、標點）一律要寫 `${var}`
 - **以後的追問**：寫/改這個 repo 裡任何 bash 腳本前，先跑一次 `grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' <file>` 掃有沒有裸變數貼著全形字元；新增訊息字串時直接養成 `${var}` 的習慣，不要等出事才補
+
+### 2026-08-29 — session.lock 用純 kill -0 判斷存活，撞到 pid 回收誤判成孤兒鎖卡死
+
+- **症狀指紋**：panel 卡片持續顯示「🧑‍💻 有人正在互動執行（pid N）」數小時不消失，但該 repo 實際上沒有任何 `/ai-work`／`/ai-review` 在跑；`cat .ai/state/session.lock` 給出的 pid 用 `ps -p <pid>` 一查，是一個啟動時間遠早於 lock 檔 mtime、command 完全無關的行程
+- **根因**：`.ai/state/session.lock` 的存活判斷原本只看 `kill -0 <pid>`——單次 `/ai-work` 呼叫被 watchdog 砍掉時沒機會清空自己的 lock，殘留的 pid 之後可能被作業系統回收給不相干的行程，`kill -0` 對這種「巧合存活」一樣回傳成功，孤兒 lock 就永遠不會被判定過期
+- **修法**：`AI-RUNTIME.md` 補上「session.lock 存活要同時滿足 `kill -0` 成功且檔案 mtime 在 2 小時內」的規則；`templates/skills/ai-work`、`ai-review`、`ai-task`、`ai-wrap` 的 lock 檢查步驟同步加上 mtime 門檻；`panel/main.go` 的 `sessionLockStatus()` 加 `sessionLockMaxAge`（2 小時）常數與 `time.Since(info.ModTime())` 檢查。**只套用在 session.lock**，`supervisor/lock` 橫跨整個無人迴圈，合法存活時間本來就可能數小時以上，不能套同一個門檻
+- **以後的追問**：任何用 pid 檔案判斷「行程還在跑」的機制，都要問「如果這個 pid 已經死了、被系統回收給別的行程，我的檢查會不會被騙？」——純 `kill -0` 永遠不夠，要嘛疊時間戳門檻，要嘛記錄行程啟動時間一起比對

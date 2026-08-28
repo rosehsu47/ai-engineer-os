@@ -33,16 +33,20 @@ AI-RUNTIME.md 為準；本文內嵌了必要的部分。
 
 ### 步驟 0：守門
 - `.ai/STOP` 存在 → 印 `AIOS_STATUS: STOPPED task=none score=na receipt=none`，結束（什麼都不寫）
-- **取得 session lock**：讀 `.ai/state/session.lock`，若存在且其中的
-  pid 用 `kill -0 <pid>` 確認還活著 → 代表另一個 `/ai-work`／`/ai-review`
-  呼叫正在跑，**什麼都不寫**，在狀態行之前說明撞到的 pid，印
-  `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，結束。lock 不
-  存在或 pid 已死 → 用 Write 工具把自己的 pid 寫進
-  `.ai/state/session.lock`（headless 呼叫用 `echo $$`；互動 session 用
-  當前 shell 的 pid），繼續。**不查 `.ai/supervisor/lock`**——
-  `supervisor.sh` 呼叫 `/ai-work` 是循序等待每輪結束才呼叫下一輪，不會
-  自己跟自己撞，那份 lock 管的是另一件事（見 AI-RUNTIME.md 單一寫入者
-  不變量）
+- **取得 session lock**：讀 `.ai/state/session.lock`，若存在、其中的
+  pid 用 `kill -0 <pid>` 確認還活著、**且**檔案 mtime 在 2 小時內
+  （`stat -f %m` 或等效方式，跟現在時間比較）→ 代表另一個
+  `/ai-work`／`/ai-review` 呼叫正在跑，**什麼都不寫**，在狀態行之前說明
+  撞到的 pid，印 `AIOS_STATUS: BLOCKED task=none score=na receipt=none`，
+  結束。**兩個條件缺一都視為未持有**（lock 不存在／pid 已死／mtime 超過
+  2 小時——單次呼叫不該跑這麼久，超時代表上一個呼叫被砍掉時沒機會清
+  lock，且它的 pid 可能已被系統回收給不相干的行程，只信 `kill -0` 會
+  誤判成「還活著」，見 AI-RUNTIME.md 單一寫入者不變量）→ 用 Write 工具
+  把自己的 pid 寫進 `.ai/state/session.lock`（headless 呼叫用
+  `echo $$`；互動 session 用當前 shell 的 pid），繼續。**不查
+  `.ai/supervisor/lock`**——`supervisor.sh` 呼叫 `/ai-work` 是循序等待
+  每輪結束才呼叫下一輪，不會自己跟自己撞，那份 lock 管的是另一件事
+  （也不適用 2 小時門檻，它橫跨整個無人迴圈，合法存活時間本來就長）
 - `.ai/PAUSED` 存在：
   - **含 `## 人類回覆` 節** → 先消化回覆再繼續：把決定路由到正確的地方
     （影響某任務的做法 → 附記進該任務 `description`，前綴「人類回覆（日期）：」，

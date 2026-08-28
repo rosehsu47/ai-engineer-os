@@ -539,6 +539,16 @@ func supervisorLockStatus(path string) (bool, int) {
 	return true, pid
 }
 
+// sessionLockMaxAge：session.lock 的存活判斷不能只信 kill -0——單次呼叫
+// 被 watchdog 砍掉時來不及清空 lock，殘留的 pid 之後可能被系統回收給
+// 完全無關的行程，kill -0 對這種「巧合存活」一樣回傳成功（實測發生過：
+// 孤兒 lock 卡了數小時，pid 恰好被一個六天前就在跑、不相干的背景行程
+// 佔用）。單次 /ai-work／/ai-review 呼叫正常不會跑這麼久（headless 情況
+// 下更受 supervisor watchdog 30 分鐘 timeout 保護），2 小時是留了充裕
+// 邊界的門檻。只套用在 session.lock——supervisor/lock 橫跨整個無人
+// 迴圈，合法存活時間本來就可能數小時以上，不能套同一個門檻。
+const sessionLockMaxAge = 2 * time.Hour
+
 // sessionLockStatus 讀 `.ai/state/session.lock`——跟 supervisor/lock 是
 // 兩層不同生命週期的鎖（見 AI-RUNTIME.md 單一寫入者不變量）：這份是
 // /ai-work、/ai-review 單次呼叫期間持有，不論呼叫者是 supervisor.sh
@@ -546,9 +556,17 @@ func supervisorLockStatus(path string) (bool, int) {
 // 訊號——這正是 panel 要顯示「不管是 supervisor.sh 還是 /ai-work，
 // 現在有沒有人在執行」的資料來源。釋放時該檔案會被清空（見 skill
 // 說明），空內容或壞掉的 pid 一律視為未持有，跟 supervisorLockStatus
-// 同一套容錯邏輯。
+// 同一套容錯邏輯，額外再疊一層 mtime 過期判斷（見 sessionLockMaxAge）。
 func sessionLockStatus(path string) (bool, int) {
-	b, err := os.ReadFile(filepath.Join(path, ".ai", "state", "session.lock"))
+	lockPath := filepath.Join(path, ".ai", "state", "session.lock")
+	info, err := os.Stat(lockPath)
+	if err != nil {
+		return false, 0
+	}
+	if time.Since(info.ModTime()) > sessionLockMaxAge {
+		return false, 0
+	}
+	b, err := os.ReadFile(lockPath)
 	if err != nil {
 		return false, 0
 	}
