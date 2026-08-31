@@ -7,6 +7,11 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 想看「為什麼改、怎麼修的、以後怎麼避免」，見 [`LESSONS.md`](LESSONS.md)——
 這份只列「改了什麼」。
 
+## 2026-08-31
+
+- feat(skills): add /pm-review — grounded gut-check on new ideas
+- docs: position against Superlogical (terminal session persistence)
+
 ## 2026-08-29
 
 - fix(runtime): session.lock staleness needs more than kill -0
@@ -14,6 +19,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 ## 2026-08-28
 
 - fix(panel): let a card show its full backlog, not just the top 5
+- fix(supervisor): don't flag BLOCKED as a checkpoint protocol violation
 - docs(lessons): add CHANGELOG.md + LESSONS.md and their generators
 - docs: reflect panel's supervisor-launch capability
 - fix(supervisor): doctor no longer requires a dead Write(**) rule

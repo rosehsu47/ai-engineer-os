@@ -130,6 +130,21 @@ are precisely the pieces a general assistant framework doesn't center.
 Different layer, different problem; using Hermes would still leave you
 building everything in the numbered list above.
 
+### vs. terminal/session persistence tools (e.g. [Superlogical](https://www.superlogical.com/))
+
+Superlogical is a server-side terminal multiplexer: it keeps a long-running
+shell session alive and reconnectable across devices, and — unlike tmux —
+knows whether an agent inside it is still working or waiting on approval.
+It operates one layer below this project and solves a problem this project
+deliberately doesn't have: `claude -p "/ai-work"` is a disposable subprocess,
+not a session you reconnect to — recovery means re-reading `.ai/`, not
+resuming a live process. As of its beta launch it's explicitly scoped to
+session persistence only (no task queue, memory, or contract layer), so
+there's no overlap today, and the two compose for free if you want it —
+run `supervisor.sh` inside a Superlogical pane for phone-reachable live
+output and nothing in this repo has to change, per the "Loop"/"Scheduler"
+replaceability above.
+
 The honest overlap risk is not Hermes but **Claude Code's own evolution**:
 background tasks, scheduled cloud routines, and task queues are growing
 natively. The supervisor shell loop and web panel are the most replaceable
