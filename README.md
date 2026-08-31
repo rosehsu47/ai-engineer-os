@@ -42,24 +42,15 @@ layer — it never decides how the agent thinks (today all of that is
 delegated to Claude Code via `claude -p "/ai-work"`). What it maintains is the
 working environment every agent run shares, all as files under `.ai/`:
 
-```
-         Loop engine（supervisor / cron / CI —— replaceable）
-                          │
-                          ▼
-              ┌──────────────────────────┐
-              │      AI Engineer OS      │
-              ├──────────────────────────┤
-              │  Contract      State     │  data plane —
-              │  Memory        Tasks     │  what the agent
-              │  Context       Receipts  │  reads and writes
-              ├──────────────────────────┤
-              │  Control（human）        │  control plane —
-              │   STOP · PAUSED          │  authority the human keeps,
-              │   schedule / budget      │  deny-listed from the agent
-              └──────────────────────────┘
-                          │
-                          ▼
-                   Git repository
+```mermaid
+flowchart TD
+    L["Loop engine<br/>(supervisor / cron / CI — replaceable)"]
+    subgraph OS["AI Engineer OS"]
+        DP["<b>data plane</b><br/>Contract · State · Memory<br/>Tasks · Context · Receipts<br/><i>what the agent reads and writes</i>"]
+        CP["<b>control plane (human)</b><br/>STOP · PAUSED · schedule / budget<br/><i>authority the human keeps,<br/>deny-listed from the agent</i>"]
+    end
+    G[("Git repository")]
+    L --> OS --> G
 ```
 
 The **data plane** is the agent's working environment: contract (rules,

@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-08-31
 
+- docs: convert ASCII-art diagrams to Mermaid
 - feat(skills): add /pm-review — grounded gut-check on new ideas
 - docs: position against Superlogical (terminal session persistence)
 
