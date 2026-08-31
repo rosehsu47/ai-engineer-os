@@ -36,6 +36,7 @@ repo (never in-process session state).
 | `/ai-sync` | Syncs already-initialized repos to the latest templates: skills auto-copied, settings drift listed for human confirmation, verify script offered — never touches `.ai/` state, CONTRACT, or schedule values |
 | `/ai-healthcheck` | Audits a target repo's CONTRACT.md + backlog/doing tasks for content-level defects that predictably cause failed/incomplete delivery — exhaustive-sounding acceptance with no checkable source list, DoD clauses that conflict with headless execution, fact-correction tasks missing a cited source, ambiguous acceptance, broken `depends_on` graphs. Read-only report; never edits backlog or CONTRACT itself |
 | `/new-lesson` | Captures a project-specific gotcha into `LESSONS.md` (symptom fingerprint / root cause / fix / follow-up question) — trigger proactively when the user corrects a wrong assumption or a bug turns out to be a misunderstanding of this repo's architecture, don't wait for the user to type the command |
+| `/pm-review` | Co-owner/PM/skeptical-reviewer gut-check on a new idea, tool, or direction shift — grounds the verdict in README/ROADMAP/AI-RUNTIME/CLAUDE.md rather than vibes. Trigger proactively whenever the user brings a new tool or proposal and seems unsure whether it should move this project, don't wait for the user to type the command |
 
 ## Key rules (always apply)
 
