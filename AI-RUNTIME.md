@@ -7,12 +7,11 @@
 
 ## 系統圖
 
-```
-   supervisor.sh ──每輪開全新 session──▶ claude -p "/ai-work"
-        │                                    │
-        │ 讀 AIOS_STATUS / 分類錯誤 / 復原      │ 讀寫 .ai/（唯一的狀態載體）
-        ▼                                    ▼
-   .ai/supervisor/*（log/lock/cost）    .ai/{tasks,state,receipts,...}
+```mermaid
+flowchart LR
+    SUP["supervisor.sh"] -->|"每輪開全新 session"| WORK["claude -p /ai-work"]
+    SUP -->|"讀 AIOS_STATUS / 分類錯誤 / 復原"| SUPFILES[".ai/supervisor/*<br/>(log/lock/cost)"]
+    WORK -->|"讀寫 .ai/（唯一的狀態載體）"| AIFILES[".ai/{tasks,state,receipts,...}"]
 ```
 
 核心原則：**所有狀態都在檔案裡**。agent session 是無狀態的、可拋棄的；
