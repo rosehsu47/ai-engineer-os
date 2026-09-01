@@ -302,6 +302,7 @@ func main() {
 		}
 		for _, f := range []struct{ form, flag string }{
 			{"quota_wait", "--quota-wait"},
+			{"quota_stop", "--quota-stop"},
 			{"max_iterations", "--max-iterations"},
 			{"max_failures", "--max-failures"},
 		} {
@@ -317,11 +318,20 @@ func main() {
 			{"once", "--once"},
 			{"review", "--review"},
 			{"wait_on_pause", "--wait-on-pause"},
+			{"ignore_quota", "--ignore-quota"},
 			{"yolo", "--yolo"},
 		} {
 			if r.FormValue(f.form) == "1" {
 				args = append(args, f.flag)
 			}
+		}
+		// --claude-flags 走 argv 單一元素傳給 supervisor.sh（跟其他欄位一樣，
+		// 不經過 shell，panel 這端沒有注入面）；supervisor.sh 自己會在組
+		// claude 呼叫時對這個值做 unquoted 展開（本來就有的行為，
+		// --claude-flags 這個 flag 設計上就是讓操作者自己傳多個 flags 進去，
+		// 跟操作者自己在終端機打 --claude-flags "..." 同一個信任層級）。
+		if v := strings.TrimSpace(r.FormValue("claude_flags")); v != "" {
+			args = append(args, "--claude-flags", v)
 		}
 		if err := startSupervisor(repo, args); err != nil {
 			http.Error(w, err.Error(), 500)
