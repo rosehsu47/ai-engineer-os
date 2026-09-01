@@ -74,9 +74,10 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   時才出現；有互動 session 在跑時也不出現，現在啟動只會立刻撞
   session lock 收工）：等同 `supervisor/supervisor.sh --repo <repo> ...`，
   表單開放 `--model`（opus/sonnet/haiku 下拉）、`--quota-wait`、
-  `--max-iterations`、`--max-failures`，以及
-  `--once`／`--review`／`--wait-on-pause`／`--yolo`
-  四個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
+  `--quota-stop`、`--max-iterations`、`--max-failures`、`--claude-flags`
+  （原始文字，附加給 claude CLI），以及
+  `--once`／`--review`／`--wait-on-pause`／`--ignore-quota`／`--yolo`
+  五個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
   `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行中會顯示 pid 與
   log 連結（純文字，開新分頁看 stdout/stderr）；**停止用卡片下方既有的
   STOP 按鈕**（寫 `.ai/STOP`，supervisor.sh 自己的迴圈本來就會偵測），

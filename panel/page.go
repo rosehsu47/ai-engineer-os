@@ -76,7 +76,9 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .supform .caption{font-size:11px;color:#8b98ac;margin:0 0 10px}
  .supform .fields{display:flex;flex-wrap:wrap;gap:12px 22px;margin-bottom:12px}
  .supform .field{display:flex;flex-direction:column;gap:4px;color:#94a3b8;font-size:11.5px;white-space:nowrap}
+ .supform .field.wide{width:100%;white-space:normal;margin:0 0 12px}
  .supform select,.supform input[type=number]{background:#0a0f1c;color:#e2e8f0;border:1px solid #475569;border-radius:7px;padding:5px 8px;font-size:12.5px;width:100px;box-sizing:border-box;min-width:0}
+ .supform input[type=text]{background:#0a0f1c;color:#e2e8f0;border:1px solid #475569;border-radius:7px;padding:5px 8px;font-size:12.5px;width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
  .supform .checks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-bottom:10px}
  .supform label.chk{display:inline-flex;align-items:center;gap:6px;color:#cbd5e1;font-size:12px;white-space:nowrap}
  .supform .yolo-box{background:#7f1d1d1a;border:1px solid #7f1d1d55;border-radius:9px;padding:7px 10px;margin-bottom:12px}
@@ -182,6 +184,7 @@ function supervisorBox(s){
     '<label class="field">model<select class="sf-model"><option value="">預設</option>'+
       '<option value="opus">opus</option><option value="sonnet">sonnet</option><option value="haiku">haiku</option></select></label>'+
     '<label class="field">quota-wait %<input class="sf-quota-wait" type="number" min="0" max="100" placeholder="60"></label>'+
+    '<label class="field">quota-stop %<input class="sf-quota-stop" type="number" min="0" max="101" placeholder="80"></label>'+
     '<label class="field">max-iterations<input class="sf-max-iterations" type="number" min="1" placeholder="10"></label>'+
     '<label class="field">max-failures<input class="sf-max-failures" type="number" min="1" placeholder="3"></label>'+
     '</div>'+
@@ -189,7 +192,10 @@ function supervisorBox(s){
     '<label class="chk"><input type="checkbox" class="sf-once">--once（只跑一輪）</label>'+
     '<label class="chk"><input type="checkbox" class="sf-review">--review（每任務後獨立審查）</label>'+
     '<label class="chk"><input type="checkbox" class="sf-wait-on-pause">--wait-on-pause（PAUSED 時輪詢不退出）</label>'+
+    '<label class="chk"><input type="checkbox" class="sf-ignore-quota">--ignore-quota（這次不查用量、不寫 STOP）</label>'+
     '</div>'+
+    '<label class="field wide">--claude-flags（附加給 claude CLI 的原始 flags，例如 --allowedTools ...）'+
+      '<input class="sf-claude-flags" type="text" placeholder="留白 = 不附加"></label>'+
     '<div class="yolo-box"><label class="chk"><input type="checkbox" class="sf-yolo">⚠ --yolo（跳過權限確認，只在信任的 repo 用）</label></div>'+
     '</div>'+
     '<div class="cmdpreview"><span class="prompt">$</span><code>supervisor.sh --repo '+esc(s.path)+'</code></div>'+
@@ -205,12 +211,15 @@ function supArgsPreview(box){
   let cmd='supervisor.sh --repo '+box.dataset.repo;
   if(qval(box,'sf-model')) cmd+=' --model '+qval(box,'sf-model');
   if(qval(box,'sf-quota-wait')) cmd+=' --quota-wait '+qval(box,'sf-quota-wait');
+  if(qval(box,'sf-quota-stop')) cmd+=' --quota-stop '+qval(box,'sf-quota-stop');
   if(qval(box,'sf-max-iterations')) cmd+=' --max-iterations '+qval(box,'sf-max-iterations');
   if(qval(box,'sf-max-failures')) cmd+=' --max-failures '+qval(box,'sf-max-failures');
   if(qchk(box,'sf-once')) cmd+=' --once';
   if(qchk(box,'sf-review')) cmd+=' --review';
   if(qchk(box,'sf-wait-on-pause')) cmd+=' --wait-on-pause';
+  if(qchk(box,'sf-ignore-quota')) cmd+=' --ignore-quota';
   if(qchk(box,'sf-yolo')) cmd+=' --yolo';
+  if(qval(box,'sf-claude-flags')) cmd+=' --claude-flags "'+qval(box,'sf-claude-flags')+'"';
   return cmd; }
 function updateCmdPreview(box){ const el=box.querySelector('.cmdpreview code'); if(el) el.textContent=supArgsPreview(box); }
 // cardBody：展開後的完整內容（原本 card() 的全部細節），收合列只留
@@ -321,17 +330,18 @@ function restoreQaState(saved){
   }); }
 // saveSupState／restoreSupState：跟 qa 的 textarea 一樣的問題——5 秒重繪
 // 會砍掉 DOM，連帶收合「進階設定」、清空正在填的表單值。存/復原展開
-// 狀態、8 個欄位值、目前 focus 在哪個欄位（用 class 名記，欄位不會重複）。
+// 狀態、所有欄位值、目前 focus 在哪個欄位（用 class 名記，欄位不會重複）。
 function saveSupState(){
   const out={};
   document.querySelectorAll('.supform[data-repo]').forEach(f=>{
     const adv=f.querySelector('.adv'), active=document.activeElement;
     out[f.dataset.repo]={
       adv: adv?!adv.hidden:false,
-      model:qval(f,'sf-model'), quota_wait:qval(f,'sf-quota-wait'),
+      model:qval(f,'sf-model'), quota_wait:qval(f,'sf-quota-wait'), quota_stop:qval(f,'sf-quota-stop'),
       max_iterations:qval(f,'sf-max-iterations'), max_failures:qval(f,'sf-max-failures'),
+      claude_flags:qval(f,'sf-claude-flags'),
       once:qchk(f,'sf-once'), review:qchk(f,'sf-review'),
-      wait_on_pause:qchk(f,'sf-wait-on-pause'), yolo:qchk(f,'sf-yolo'),
+      wait_on_pause:qchk(f,'sf-wait-on-pause'), ignore_quota:qchk(f,'sf-ignore-quota'), yolo:qchk(f,'sf-yolo'),
       focused:(active && f.contains(active)) ? active.className : null,
     };
   });
@@ -343,10 +353,11 @@ function restoreSupState(saved){
     if(adv && st.adv){ adv.hidden=false; if(toggle) toggle.textContent='進階設定 ▴'; }
     const setv=(c,v)=>{ const el=f.querySelector('.'+c); if(el && v) el.value=v; };
     const setc=(c,v)=>{ const el=f.querySelector('.'+c); if(el) el.checked=v; };
-    setv('sf-model',st.model); setv('sf-quota-wait',st.quota_wait);
+    setv('sf-model',st.model); setv('sf-quota-wait',st.quota_wait); setv('sf-quota-stop',st.quota_stop);
     setv('sf-max-iterations',st.max_iterations); setv('sf-max-failures',st.max_failures);
+    setv('sf-claude-flags',st.claude_flags);
     setc('sf-once',st.once); setc('sf-review',st.review);
-    setc('sf-wait-on-pause',st.wait_on_pause); setc('sf-yolo',st.yolo);
+    setc('sf-wait-on-pause',st.wait_on_pause); setc('sf-ignore-quota',st.ignore_quota); setc('sf-yolo',st.yolo);
     updateCmdPreview(f);
     if(st.focused){ const el=f.querySelector('.'+st.focused); if(el) el.focus(); }
   }); }
@@ -468,9 +479,12 @@ document.getElementById('grid').addEventListener('click', async e=>{
       const box=b.closest('.supform');
       if(qchk(box,'sf-yolo') && !confirm('確定要用 --yolo（跳過權限確認）啟動嗎？只在信任的 repo 用。')) return;
       post('/api/supervisor',{repo:repo,action:'start',model:qval(box,'sf-model'),
-        quota_wait:qval(box,'sf-quota-wait'),max_iterations:qval(box,'sf-max-iterations'),max_failures:qval(box,'sf-max-failures'),
+        quota_wait:qval(box,'sf-quota-wait'),quota_stop:qval(box,'sf-quota-stop'),
+        max_iterations:qval(box,'sf-max-iterations'),max_failures:qval(box,'sf-max-failures'),
+        claude_flags:qval(box,'sf-claude-flags'),
         once:qchk(box,'sf-once')?'1':'',review:qchk(box,'sf-review')?'1':'',
-        wait_on_pause:qchk(box,'sf-wait-on-pause')?'1':'',yolo:qchk(box,'sf-yolo')?'1':''});
+        wait_on_pause:qchk(box,'sf-wait-on-pause')?'1':'',ignore_quota:qchk(box,'sf-ignore-quota')?'1':'',
+        yolo:qchk(box,'sf-yolo')?'1':''});
     } else stopRepo(repo,b.dataset.act);
     return;
   }
