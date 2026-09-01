@@ -39,6 +39,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -358,7 +359,7 @@ func main() {
 		}
 		ai := filepath.Join(repo, ".ai")
 		costs := taskCosts(filepath.Join(ai, "supervisor"))
-		full, _ := taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 0)
+		full, _ := sortedBacklog(filepath.Join(ai, "tasks", "backlog.yaml"), 0)
 		for i, t := range full {
 			full[i] = withCost(t, costs)
 		}
@@ -760,7 +761,7 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 	// tasks
 	costs := taskCosts(filepath.Join(ai, "supervisor"))
 	s.CurrentTask = withCost(firstTask(filepath.Join(ai, "tasks", "doing.yaml")), costs)
-	backlog, backlogCount := taskList(filepath.Join(ai, "tasks", "backlog.yaml"), 5)
+	backlog, backlogCount := sortedBacklog(filepath.Join(ai, "tasks", "backlog.yaml"), 5)
 	for i, t := range backlog {
 		backlog[i] = withCost(t, costs)
 	}
@@ -938,6 +939,77 @@ func taskList(p string, n int) ([]string, int) {
 			}
 			id = ""
 		}
+	}
+	return out, count
+}
+
+// backlogEntry／sortedBacklog：backlog.yaml 專用，taskList 只照檔案原始
+// 順序回傳，但 /ai-work 實際挑任務是「priority 最小；同分取 created_at
+// 最舊」（見 AI-RUNTIME.md 步驟 2），檔案裡的寫入順序不一定跟這個一致
+// ——面板顯示跟實際執行順序對不上會誤導人。這支多解析 priority／
+// created_at 兩個欄位、依同一套規則排序後再截斷，doing.yaml（至多 1 筆）
+// 跟 done.yaml（只用來計數）用不到，維持原本的 taskList。
+type backlogEntry struct {
+	id, title, createdAt string
+	priority             int
+}
+
+func sortedBacklog(p string, n int) ([]string, int) {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil, 0
+	}
+	var entries []backlogEntry
+	var cur backlogEntry
+	have := false
+	flush := func() {
+		if have {
+			entries = append(entries, cur)
+		}
+		// priority 預設放到最大值：缺這個欄位（理論上不該發生，防資料損毀）
+		// 時排到最後，而不是誤排到最前面（0 會比 priority 1 = 最高還更前面）
+		cur = backlogEntry{priority: 1<<31 - 1}
+		have = false
+	}
+	stripComment := func(s string) string {
+		if i := strings.Index(s, "#"); i >= 0 {
+			s = s[:i]
+		}
+		return strings.TrimSpace(s)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "- id:"):
+			flush()
+			have = true
+			cur.id = stripComment(strings.TrimPrefix(t, "- id:"))
+		case !have:
+			// 還沒進到一個任務區塊（例如頂層的 version:/tasks: 這類 key），跳過
+		case strings.HasPrefix(t, "title:"):
+			cur.title = strings.Trim(stripComment(strings.TrimPrefix(t, "title:")), `"`)
+		case strings.HasPrefix(t, "priority:"):
+			if v, err := strconv.Atoi(stripComment(strings.TrimPrefix(t, "priority:"))); err == nil {
+				cur.priority = v
+			}
+		case strings.HasPrefix(t, "created_at:"):
+			cur.createdAt = strings.Trim(stripComment(strings.TrimPrefix(t, "created_at:")), `"`)
+		}
+	}
+	flush()
+	count := len(entries)
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].priority != entries[j].priority {
+			return entries[i].priority < entries[j].priority
+		}
+		return entries[i].createdAt < entries[j].createdAt // ISO 8601 字串，字典序＝時間序
+	})
+	if n > 0 && len(entries) > n {
+		entries = entries[:n]
+	}
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.id + " " + e.title
 	}
 	return out, count
 }
