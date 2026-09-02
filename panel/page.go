@@ -68,6 +68,8 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .pin-btn{display:inline-flex;align-items:center;gap:4px;border:1px solid #334155;border-radius:9px;background:transparent;color:#8b98ac;font-size:11px;padding:4px 8px;margin-left:6px;cursor:pointer}
  .pin-btn:hover{border-color:#475569;color:#cbd5e1}
  .pin-btn.on{border-color:#4f46e5;color:#a5b4fc;background:#4f46e51a}
+ .killbtn{display:inline-flex;align-items:center;gap:4px;border:1px solid #7f1d1d;border-radius:9px;background:#450a0a33;color:#f87171;font-size:11px;padding:4px 8px;margin-left:6px;cursor:pointer}
+ .killbtn:hover{background:#7f1d1d55;color:#fca5a5}
  .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:#1e293b;color:#38bdf8;flex-shrink:0}
  .icon-btn:hover{background:#334155;color:#7dd3fc}
  .icon-btn svg{width:14px;height:14px}
@@ -164,9 +166,19 @@ function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S
 // 同時出現讓人搞不清楚順序（supervisor.sh 開跑會先看到 .ai/STOP 立刻退出）。
 function supervisorBox(s){
   if(s.supervisor_alive){
+    // session_active 在這裡代表「supervisor 自己這輪的 /ai-work 或
+    // /ai-review 正在跑」（單一寫入者不變量下，supervisor 活著時
+    // session lock 不可能是別人）——這時候中斷可能留下沒寫完的狀態，
+    // 只在它閒置（等新任務／等 quota reset，卡在 do_sleep）時才給
+    // ⛔ 中斷按鈕，不然只顯示原因，不放按鈕誤導使用者。
+    const safeIdle=!s.session_active;
     return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
       '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
-      ' <span class="muted">· 用下方 STOP 按鈕煞車</span></div>';
+      ' <span class="muted">· 用下方 STOP 按鈕煞車</span>'+
+      (safeIdle
+        ? ' <button class="killbtn" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">⛔ 中斷</button>'
+        : ' <span class="muted">· 正在跑一輪 /ai-work／/ai-review，等它閒置才能安全中斷</span>')+
+      '</div>';
   }
   // session_active 但不是 supervisor：有人正在互動跑 /ai-work 或
   // /ai-review（.ai/state/session.lock 存活）——沒有 log 檔可看（那是
@@ -491,6 +503,9 @@ document.getElementById('grid').addEventListener('click', async e=>{
       post('/api/devserver',{repo:repo,action:b.dataset.act==='devstart'?'start':'stop'});
     } else if(b.dataset.act==='devpersist-on'||b.dataset.act==='devpersist-off'){
       post('/api/devserver-persist',{repo:repo,action:b.dataset.act==='devpersist-on'?'install':'uninstall'});
+    } else if(b.dataset.act==='supkill'){
+      if(!confirm('確定要直接中斷 supervisor process 嗎？（kill，不是 STOP 那種等它自己退出——這一輪不能 resume。目前偵測到閒置中，應該是安全的）')) return;
+      post('/api/supervisor-kill',{repo:repo});
     } else if(b.dataset.act==='supstart'){
       const box=b.closest('.supform');
       if(qchk(box,'sf-yolo') && !confirm('確定要用 --yolo（跳過權限確認）啟動嗎？只在信任的 repo 用。')) return;

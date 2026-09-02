@@ -141,9 +141,14 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   `--once`／`--review`／`--wait-on-pause`／`--ignore-quota`／`--yolo`
   五個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
   `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行中會顯示 pid 與
-  log 連結（純文字，開新分頁看 stdout/stderr）；**停止用卡片下方既有的
-  STOP 按鈕**（寫 `.ai/STOP`，supervisor.sh 自己的迴圈本來就會偵測），
-  不重做一個停止鍵
+  log 連結（純文字，開新分頁看 stdout/stderr）；**優雅停止用卡片下方
+  既有的 STOP 按鈕**（寫 `.ai/STOP`，supervisor.sh 自己的迴圈本來就會
+  偵測，會等到安全點才退出）。**目前偵測到閒置中**（沒有 `/ai-work`
+  或 `/ai-review` 正在跑——即 `.ai/state/session.lock` 沒被持有，代表
+  supervisor.sh 正卡在 iteration 之間的 sleep／quota-wait 輪詢，不是在
+  跑任務）時，同一列會多一顆 **⛔ 中斷**：直接 `SIGTERM`/`SIGKILL` 那個
+  process group，不等它跑到下個檢查點，這一輪不能 resume；正在跑任務
+  時這顆按鈕不會出現，只顯示原因，逼你用 STOP 或等它閒置
 - 進行中任務、待辦前 5 筆＋總數、完成數、最近 3 張收據——待辦超過 5 筆
   時多一顆「顯示全部 N 筆待辦」按鈕，按需向 `/api/backlog` 抓完整清單
   （不進 5 秒常態輪詢，避免拖慢畫面），收合按鈕縮回去；展開狀態撐得過
@@ -205,10 +210,22 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - panel **不**額外維護一份自己的 pid/存活狀態——`.ai/supervisor/lock`
   是 supervisor.sh 自己寫入、EXIT trap 保證清掉的協定檔，卡片上的
   🟢/⚪ 狀態本來就讀這份，啟動表單只是幫你把指令組好、按下去
-- 沒有獨立的停止鍵——用卡片下方既有的 STOP 按鈕（寫 `.ai/STOP`），
-  跟你自己在終端機 `touch .ai/STOP` 效果相同，supervisor.sh 的迴圈本來
-  就會偵測。log 只到 `~/.aios-panel-state/`，不影響 `.ai/` 底下
-  supervisor.sh 自己寫的 events/receipts 稽核紀錄
+- 優雅停止用卡片下方既有的 STOP 按鈕（寫 `.ai/STOP`），跟你自己在終端機
+  `touch .ai/STOP` 效果相同，supervisor.sh 的迴圈本來就會偵測。log 只到
+  `~/.aios-panel-state/`，不影響 `.ai/` 底下 supervisor.sh 自己寫的
+  events/receipts 稽核紀錄
+- **⛔ 中斷**（`/api/supervisor-kill`）：STOP 要等 supervisor.sh 自己在
+  安全點退出（可能還在跑一輪 `/ai-work`），有時候等不了那麼久。這個
+  endpoint 直接 `SIGTERM`（逾時 `SIGKILL`）整個 process group，但**只在
+  確認閒置時才放行**——伺服器端強制檢查 `.ai/state/session.lock` 沒被
+  持有（`.ai/supervisor/lock` 活著時，session lock 只可能是 supervisor
+  自己這輪 `/ai-work`／`/ai-review` 持有的，單一寫入者不變量保證），
+  代表 supervisor.sh 正卡在 iteration 之間的 `sleep`／quota-wait 輪詢，
+  沒有任何檔案正在被寫，直接殺掉不會留下半寫入的狀態；正在跑任務時
+  這個 endpoint 會擋下來（409，附原因），前端也不會顯示按鈕。這是刻意
+  不對稱的設計：**只做安全時才允許的立即中斷，不做任意時刻的強制
+  kill**——後者需要更複雜的中斷點設計（例如任務中途的部分回滾），
+  現在故意不做
 
 **dev server 開機自動啟動**（需 `-devserver-launchd-script`，見上）：
 - `repo` 值走 `exec.Command` 的 argv 傳給
