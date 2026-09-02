@@ -149,7 +149,7 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   打斷正在跑的這一輪，是「正常、隨時可按」的動作）；**目前偵測到閒置
   中**（沒有 `/ai-work` 或 `/ai-review` 正在跑——即 `.ai/state/session.lock`
   沒被持有，代表 supervisor.sh 正卡在 iteration 之間的 sleep／quota-wait
-  輪詢，不是在跑任務）時，多一顆紅色的**立即中斷**：直接
+  輪詢，不是在跑任務）時，多一顆紅色的**FORCE STOP**：直接
   `SIGTERM`/`SIGKILL` 那個 process group，不等它跑到下個檢查點，這一輪
   不能 resume——紅色留給它，因為它才是真的不可逆、少用的那個；正在跑
   任務時這顆按鈕不會出現，只顯示原因，逼你用 STOP 或等它閒置
@@ -218,7 +218,7 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
   `touch .ai/STOP` 效果相同，supervisor.sh 的迴圈本來就會偵測。log 只到
   `~/.aios-panel-state/`，不影響 `.ai/` 底下 supervisor.sh 自己寫的
   events/receipts 稽核紀錄
-- **⛔ 中斷**（`/api/supervisor-kill`）：STOP 要等 supervisor.sh 自己在
+- **FORCE STOP**（`/api/supervisor-kill`）：STOP 要等 supervisor.sh 自己在
   安全點退出（可能還在跑一輪 `/ai-work`），有時候等不了那麼久。這個
   endpoint 直接 `SIGTERM`（逾時 `SIGKILL`）整個 process group，但**只在
   確認閒置時才放行**——伺服器端強制檢查 `.ai/state/session.lock` 沒被
@@ -227,7 +227,7 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
   代表 supervisor.sh 正卡在 iteration 之間的 `sleep`／quota-wait 輪詢，
   沒有任何檔案正在被寫，直接殺掉不會留下半寫入的狀態；正在跑任務時
   這個 endpoint 會擋下來（409，附原因），前端也不會顯示按鈕。這是刻意
-  不對稱的設計：**只做安全時才允許的立即中斷，不做任意時刻的強制
+  不對稱的設計：**只做安全時才允許的 FORCE STOP，不做任意時刻的強制
   kill**——後者需要更複雜的中斷點設計（例如任務中途的部分回滾），
   現在故意不做
 

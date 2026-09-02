@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- fix(panel): align .abtn button heights, color-code STOP vs 立即中斷
 - docs: clarify .ai/STOP is a soft stop, not the source of orphaned tasks
 - fix(panel): resolve claude CLI dir into launchd PATH, not just a hardcoded list
 - fix(panel): replace emoji button icons with real SVG icons, unify button sizing

@@ -15,7 +15,7 @@
 //	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
 //	三個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
 //	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單
-//	（連同「立即中斷」——只在 session lock 沒被持有、確認閒置時才放行的
+//	（連同「FORCE STOP」——只在 session lock 沒被持有、確認閒置時才放行的
 //	直接 kill）、-devserver-launchd-script 有設時的「開機自動啟動」
 //	開關——前兩者是 spawn/kill 真的行程，第三個是動系統層 launchd 設定
 //	（寫 plist、呼叫 launchctl），都刻意跟 .ai/ 狀態切開：dev server 的
@@ -386,7 +386,7 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	http.HandleFunc("/api/supervisor-kill", func(w http.ResponseWriter, r *http.Request) {
-		// 「立即中斷」不是 STOP 的替代品——STOP 是寫信號旗、等 supervisor.sh
+		// 「FORCE STOP」不是 STOP 的替代品——STOP 是寫信號旗、等 supervisor.sh
 		// 自己在安全點退出，永遠不會弄髒狀態，但要等到下個檢查點（可能還在
 		// 跑一輪 /ai-work）。這支是真的 kill -TERM/-KILL 那個 process，只在
 		// 確認「現在沒有 /ai-work／/ai-review 正在跑」（session lock 沒被
