@@ -62,6 +62,30 @@ repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 
 人工維護的清單欄位，不是 `.ai/` 協定檔，agent 不會讀寫它；`/ai-init`
 訪談時會問一次，之後想改就直接編輯 `~/.aios-repos`。
 
+### dev server 開機自動啟動（選用，逐 repo 裝）
+
+想要某個 repo 的 dev server 常駐（開機/登入就自動起來，不用每次自己按
+「▶ 啟動」）——跟 panel 本體的常駐（見上）是同一套 launchd 機制，但**只用
+`RunAtLoad`、不用 `KeepAlive`**：你在 panel 卡片按「■ 停止」殺掉之後就是
+真的停了，不會被搶救回來，下次登入才會再自動啟動。這是刻意的：dev server
+會被手動停掉是常態（切換分支、重跑一次乾淨的），`KeepAlive` 會讓停止鍵
+形同虛設。
+
+```bash
+panel/devserver-launchd-install.sh --repo /path/to/repo              # 安裝
+panel/devserver-launchd-install.sh --repo /path/to/repo --status     # 看狀態
+panel/devserver-launchd-install.sh --repo /path/to/repo --uninstall  # 移除
+panel/devserver-launchd-install.sh --repo /path/to/repo --dry-run    # 只印 plist
+```
+
+指令讀 `~/.aios-repos` 該 repo 那一行的第三欄起（沒設定會直接報錯提示先
+加上）；pid／log 檔跟 panel 自己啟動 dev server 時寫的是同一份
+（`~/.aios-panel-state/{slug}.pid`／`.log`），所以不論這個 process 是開機
+時 launchd 起的、還是你在 panel 卡片按的，panel 卡片的狀態燈、log 連結、
+■ 停止鍵完全認得、不用改任何程式碼。label 固定 `com.aios.devserver.{slug}`
+（`{slug}` 跟 panel 內部用的是同一個 sanitize 規則），逐 repo 各裝一份，
+彼此獨立。
+
 ## 畫面上有什麼（每 5 秒自動更新）
 
 標題列下方會顯示本機內網 IP（純參考用——panel 仍只綁 127.0.0.1，這個

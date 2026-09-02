@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- feat(panel): add per-repo dev server launchd persistence
 - fix(supervisor): review_after_task fallback now matches template default
 - docs(supervisor): add schedule.yml key reference table
 
