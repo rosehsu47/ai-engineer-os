@@ -9,6 +9,8 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- fix(panel): schedule form — label-left, input-right row layout
+- feat(panel): editable form for .ai/schedule.yml, replacing the read-only view
 - fix(panel): consolidate remaining button styles into the .abtn component library
 - fix(panel): make .row a flex container so .abtn buttons truly share alignment
 - fix(panel): rename 立即中斷 to FORCE STOP for a clearer STOP/FORCE STOP pairing

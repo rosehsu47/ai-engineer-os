@@ -18,7 +18,7 @@ func scheduleFieldsHTML() string {
 		}
 		switch f.Kind {
 		case "bool":
-			out += fmt.Sprintf(`<label class="field chk"><input type="checkbox" data-key="%s" data-kind="bool"><span>%s</span></label>`, f.Key, f.Label)
+			out += fmt.Sprintf(`<label class="field chk"><span>%s</span><input type="checkbox" data-key="%s" data-kind="bool"></label>`, f.Label, f.Key)
 		case "model":
 			out += fmt.Sprintf(`<label class="field"><span>%s</span><select data-key="%s" data-kind="model">`+
 				`<option value="opus">opus</option><option value="sonnet">sonnet</option><option value="haiku">haiku</option></select></label>`,
@@ -44,14 +44,18 @@ var scheduleFormHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset=
  h1{font-size:17px;margin:0 0 4px}
  .muted{color:#8b98ac;font-size:12.5px}
  .section-label{font-size:14px;font-weight:700;color:#f1f5f9;margin:26px 0 10px}
- .fgroup{display:flex;flex-direction:column;gap:14px}
- .field{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#94a3b8}
- .field.wide input{width:100%;box-sizing:border-box}
- .field.chk{flex-direction:row;align-items:center;gap:8px;color:#cbd5e1;font-size:13px}
- .field input[type=number],.field input[type=text],.field select{background:#182238;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:7px 10px;font-size:13px;width:160px;box-sizing:border-box;font-family:inherit}
- .field input[type=text]{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+ /* 標題左、填空右：label 固定寬度當左欄，所有 row 的輸入控制項起始點
+    對齊在同一條線上（不管 label 文字長短），text 欄位（.field.wide）
+    例外——它需要吃剩下的寬度才能打長字串，改用 flex:1 撐滿右側，不用
+    固定寬度。*/
+ .fgroup{display:flex;flex-direction:column;gap:10px}
+ .field{display:flex;align-items:center;gap:14px;font-size:12.5px}
+ .field>span:first-child{flex:0 0 210px;color:#cbd5e1}
+ .field input[type=number],.field select{width:140px;flex-shrink:0;background:#182238;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:7px 10px;font-size:13px;box-sizing:border-box;font-family:inherit}
+ .field.wide input[type=text]{flex:1;min-width:0;background:#182238;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:7px 10px;font-size:13px;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
  .field input:focus,.field select:focus{outline:2px solid #4f46e5;outline-offset:1px}
- .fhelp{font-size:11.5px;color:#64748b;margin-top:-8px}
+ .field.chk input{width:18px;height:18px;accent-color:#4f46e5;cursor:pointer;flex-shrink:0;margin:0}
+ .fhelp{font-size:11.5px;color:#64748b;margin:-4px 0 2px 224px}
  .abtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 18px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;box-sizing:border-box}
  .abtn.primary{background:#4f46e5;color:#fff;border-color:#4f46e5}
  .abtn.primary:hover{background:#4338ca}
