@@ -97,6 +97,39 @@ YAML 的話，在目標 repo 跑 `/ai-config`**：問答方式逐項調整、只
   - **硬門檻 `quota_stop_threshold_pct`**（預設 80）：只看 7d，達標即寫
     `.ai/STOP` 停下，保留個人額度（7d 要等數天，等待不划算；設 101 停用）
 
+## 安全停止 vs 會製造孤兒行程的動作
+
+`.ai/STOP` 是**軟煞車**：只在 `supervisor.sh` 的 `while` 迴圈頂端檢查
+（每輪開始前，`supervisor.sh:692`），寫入的當下如果剛好有一輪 `/ai-work`
+正在跑，那一輪會被放著自然跑完（走到自己的 commit + receipt 收尾），
+下一輪迴圈開始前才檢查到旗標、乾淨退出——**不會打斷正在執行中的那次
+`claude -p` invocation**，任何時候 `touch .ai/STOP`（或 panel 的 STOP
+按鈕）都是安全的。
+
+真正會留下孤兒行程（任務被 claim 卻沒收尾——commit/receipt/
+`AIOS_STATUS` 都沒寫）的是這兩種情況，都不是 `.ai/STOP`：
+
+1. **watchdog 逾時強殺**：每輪有 `iteration_timeout_minutes`
+   （預設 30）逾時上限，超過就 `kill -TERM` 接著 `kill -KILL` 那個
+   `claude -p "/ai-work"` 子行程（`supervisor.sh:718`）——不管它當時
+   執行到哪一步（可能剛認領完任務、receipt 寫到一半），砍下去就是孤兒
+2. **supervisor.sh 這個 process 本身被硬殺**（`kill -9`、關掉跑它的
+   終端機、電腦當機）：腳本的 `EXIT` trap（`supervisor.sh:683`）只清
+   lock 檔、送事件，沒有把訊號往下傳給子行程的機制，`claude -p
+   "/ai-work"` 不保證跟著死，可能變成真正脫離監管、自己跑在背景的孤兒
+
+**想安全暫停，用 `touch .ai/STOP`（或 panel 的 STOP 按鈕）就好，不會
+製造孤兒**；避免直接對 supervisor.sh 的 process 按 `Ctrl+C` 或
+`kill`——效果接近 watchdog 砍法，不保證乾淨。panel 的「FORCE STOP」
+（`/api/supervisor-kill`）刻意只在確認閒置（`.ai/state/session.lock`
+沒被持有，代表沒有 `/ai-work` 正在跑）時才放行，天生避開這個坑，見
+[`../panel/README.md`](../panel/README.md)。
+
+下次遇到「任務認領了卻沒收尾」，先查：supervisor log 有沒有「watchdog：
+超過 N 分鐘，砍掉 pid」字樣，或那個時間點 supervisor.sh 的 process
+是不是被異常終止（機器重開機、終端機關閉等）——不要先假設是
+`.ai/STOP` 造成的。
+
 ## schedule-install.sh — 固定時刻自動啟動（launchd）
 
 ```bash
