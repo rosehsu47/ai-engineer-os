@@ -148,7 +148,10 @@ flowchart TD
 - **停滯復原**：看 `.ai/supervisor/run.log` 找退出原因，然後重跑
   `supervisor.sh --repo {repo}` 就是恢復（checkpoint 續作，殘留 lock 自動清）；
   完整 SOP 見 [supervisor/README.md](supervisor/README.md)
-- `touch {repo}/.ai/STOP` → 當輪結束後停（刪掉檔案即恢復）
+- `touch {repo}/.ai/STOP` → 安全煞車，不會打斷正在跑的那一輪（讓它自然
+  跑完收尾，下一輪開始前才退出），刪掉檔案即恢復；**不要**直接對
+  supervisor.sh 的 process 按 `Ctrl+C` 或 `kill`——不保證乾淨，細節見
+  [supervisor/README.md「安全停止 vs 會製造孤兒行程的動作」](supervisor/README.md#安全停止-vs-會製造孤兒行程的動作)
 - agent 留了 `.ai/PAUSED` → 在該 repo 跑 **`/ai-answer`**：它把 agent 的
   問題呈現成選擇題、把你的決定記到正確的地方（任務描述/記憶）、刪掉
   PAUSED、問你要不要立刻重啟（手動流程：讀檔→處理→刪檔，也可以）

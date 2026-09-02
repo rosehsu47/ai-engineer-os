@@ -9,6 +9,8 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- docs: clarify .ai/STOP is a soft stop, not the source of orphaned tasks
+- fix(panel): resolve claude CLI dir into launchd PATH, not just a hardcoded list
 - fix(panel): replace emoji button icons with real SVG icons, unify button sizing
 - feat(panel): move a quick STOP button next to the supervisor running row
 - feat(panel): safe-idle kill switch for a running supervisor

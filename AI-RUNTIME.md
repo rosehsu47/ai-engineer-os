@@ -373,3 +373,10 @@ prompt、AGENTS.md 等）。協定本身只認檔案與上述行為，不認特�
    （樹完整性、settings drift、skills、狀態檔結構；零額度），probe 實測
    headless 寫入（spawn 一次 claude 要求寫 probe 檔，花少量額度）；
    失敗時輸出會附修法（allow 條目 / 巢狀 session / `--yolo` 判斷）。
+5. **`STOPPED`（`.ai/STOP`）是軟煞車，不會打斷正在跑的那一輪**——只在
+   `supervisor.sh` 的 `while` 迴圈頂端檢查，寫入當下若正好有一輪
+   `/ai-work` 在跑，會讓它自然跑完再收工。真正會留下孤兒行程（任務
+   claim 了卻沒收尾）的是 watchdog 逾時強殺、或 supervisor.sh 本身被
+   硬殺（`kill -9`／機器當機）——後者的 `EXIT` trap 只清 lock 檔，不會
+   把訊號傳給子行程。細節與行號見
+   [`supervisor/README.md`「安全停止 vs 會製造孤兒行程的動作」](../supervisor/README.md#安全停止-vs-會製造孤兒行程的動作)。
