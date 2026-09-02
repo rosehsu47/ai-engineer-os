@@ -31,7 +31,40 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 | `--doctor` | 零額度環境體檢：`.ai/` 樹、CONTRACT `{{` 殘留、settings allow/deny 對模板的 drift、skills 齊全、狀態檔結構 lint、旗標狀態。**在一般終端機跑**（巢狀 Claude session 會讓權限結果失真，doctor 會自己警告） |
 | `--probe`（配 `--doctor`） | 花少量額度：spawn 一次 `claude -p` 實測 headless 寫入權限（寫 `.ai/supervisor/probe.txt`，3 分鐘 watchdog），是 AI-RUNTIME 已知限制 4 檢查清單的可執行版 |
 
-參數預設值都在目標 repo 的 `.ai/schedule.yml`（扁平 key）。
+參數預設值都在目標 repo 的 `.ai/schedule.yml`（扁平 key，模板見
+[`../templates/ai/schedule.yml`](../templates/ai/schedule.yml)，每個 key
+上面本來就有註解——那份是最權威的來源，這裡是集中對照表）：
+
+| key | 預設 | 說明 |
+|---|---|---|
+| `version` | `1` | schema 版本號 |
+| `max_iterations_per_run` | `10` | 這次執行最多跑幾輪 `/ai-work` 就正常收工（不是失敗，是安全上限） |
+| `max_consecutive_failures` | `3` | 連續幾次「非生產性」結果（crash、未知崩潰，**不含** rate limit）就整個停下 |
+| `iteration_timeout_minutes` | `30` | 單輪 `/ai-work` 的 watchdog 逾時，超過強制砍掉，算失敗 +1 |
+| `sleep_between_iterations_seconds` | `20` | 有生產力的一輪結束後，睡幾秒再開下一輪 |
+| `rate_limit_fallback_sleep_minutes` | `30` | 撞到 rate limit 但解析不出 reset 時間時，固定睡多久 |
+| `network_backoff_base_seconds` / `network_backoff_max_seconds` | `30` / `900` | 網路錯誤（ECONNRESET/529 等）指數退避的起始／上限秒數，最多 6 次 |
+| `max_cost_per_run_usd` | `20` | 累計 `total_cost_usd` 超過即熔斷停止（約 5–8 個任務量；訂閱制下是推估值） |
+| `quota_stop_threshold_pct` | `80` | **硬門檻**：只看 7d 額度，達標寫 `.ai/STOP` 保週額度（設 `101` 停用） |
+| `quota_wait_threshold_pct` | `60` | **軟門檻**：只看 5h 額度，達標就不開新任務，等降回才續跑（沒有上限、設 `0` 停用） |
+| `quota_wait_recheck_minutes` | `20` | 軟門檻等待期間，每隔幾分鐘重查一次 `/usage` |
+| `review_after_task` | 模板 `true`，**程式碼 fallback `false`**⚠️ | 每個 `DONE_TASK` 後要不要開全新 session 獨立審查（多花 ~$1-2） |
+| `wait_on_pause` | `false` | 撞到未回覆的 `.ai/PAUSED` 時要不要輪詢而不是退出 |
+| `pause_poll_interval_seconds` | `30` | `wait_on_pause` 開啟時的輪詢間隔 |
+| `claude_model` | `"sonnet"` | `/ai-work` 用哪個 model 跑 |
+| `extra_claude_flags` | `""` | 附加給 `claude` CLI 的原始 flags，空白分隔、值裡不可含空白（未加引號展開） |
+| `schedule_start_times` | `""` | 固定時刻自動啟動（給 `schedule-install.sh` 讀去產生 launchd job；`supervisor.sh` 本身不讀這個 key） |
+
+缺某個 key（例如舊 repo 沒同步到新模板）不是錯誤——`sched_get()` 會退回
+上表的預設值，行為等同寫了那個預設。`/ai-sync` 故意不動 `schedule.yml`
+（人類調參檔），只會在報告裡提示模板預設值有變，不會自動補齊。
+
+⚠️ `review_after_task` 是唯一的例外：模板寫 `true`（`/ai-init` 剛裝好的
+repo預設會開獨立審查），但 `sched_get()` 的程式碼 fallback 是 `false`
+——兩者不一致，是 `supervisor.sh` 自己的落差，不是文件寫錯。差別只在
+「repo 完全沒有這個 key」時才會顯現（舊到連模板都沒同步過的 repo）；
+只要 `/ai-init` 裝過、`schedule.yml` 裡真的寫了這行，就是看那行的值，
+不受這個落差影響。
 
 ## 錯誤分類與復原（實作在 `classify()`，self-test 有全套 fixtures）
 

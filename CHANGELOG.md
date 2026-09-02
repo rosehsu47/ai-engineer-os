@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-01
 
+- fix(panel): sort backlog by priority, not file order
 - feat(panel): expose --quota-stop, --ignore-quota, --claude-flags
 
 ## 2026-08-31
