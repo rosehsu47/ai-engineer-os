@@ -155,12 +155,13 @@ flowchart TD
 - 看狀態：`supervisor/dashboard.sh --repo /path` → 開
   `.ai/reports/dashboard.html`
 
-### 人性化互動的五個入口（都是問答/選擇題/按鈕，不用碰 YAML）
+### 人性化互動的六個入口（都是問答/選擇題/按鈕，不用碰 YAML）
 
 | 情境 | 入口 | 互動形式 |
 |---|---|---|
 | 首次安裝 | `/ai-init {repo}` | 訪談 6 題填契約 |
 | 交辦工作 | `/ai-task {一句話描述}` | 選擇題定 type/priority、挑 acceptance 草稿 |
+| 調 supervisor 參數 | `/ai-config` | 問答式調整 `.ai/schedule.yml`，選類別、逐項問，只改有動的 key（見 [supervisor/README.md](supervisor/README.md) 的參考表） |
 | agent 卡住等你 | `/ai-answer` 或 **panel 問答區** | 問題＋選項呈現，回覆走同一條協定路徑 |
 | 總覽與煞車 | **`aios-panel`**（[panel/README.md](panel/README.md)） | 網頁：多 repo 狀態卡、就地回答、STOP 按鈕、啟動 supervisor |
 | 出貨 | `/ai-ship {repo}` | PR 草稿先確認再推送（panel 只提示可出貨數） |
