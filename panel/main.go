@@ -13,12 +13,15 @@
 //	remote-tracking ref，不碰本地分支/工作區）——GitHub 上 PR 合併後，
 //	不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
 //	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
-//	兩個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
-//	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單——
-//	兩者都是 spawn 真的行程，不是協定檔讀寫，但都刻意跟 .ai/ 狀態切開：
-//	dev server 的 pid/log 存 ~/.aios-panel-state/，supervisor.sh 則是
-//	它自己的 `.ai/supervisor/lock`／STOP 協定照舊不變，panel 只負責照
-//	表單值組 argv 呼叫它、不額外維護一份自己的執行狀態。
+//	三個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
+//	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單、
+//	-devserver-launchd-script 有設時的「📌 開機自動啟動」開關——前兩者
+//	是 spawn 真的行程，第三個是動系統層 launchd 設定（寫 plist、呼叫
+//	launchctl），都刻意跟 .ai/ 狀態切開：dev server 的 pid/log 存
+//	~/.aios-panel-state/，supervisor.sh 則是它自己的
+//	`.ai/supervisor/lock`／STOP 協定照舊不變，panel 只負責照表單值組
+//	argv 呼叫它、不額外維護一份自己的執行狀態；devserver-launchd 的
+//	plist 存 ~/Library/LaunchAgents/，panel 只 exec 腳本、不自己組 XML。
 //
 // 用法：
 //
@@ -48,36 +51,38 @@ import (
 )
 
 type RepoState struct {
-	Name                string   `json:"name"`
-	Path                string   `json:"path"`
-	Missing             bool     `json:"missing"` // .ai/ 不存在
-	SupervisorAlive     bool     `json:"supervisor_alive"`
-	SupervisorPID       int      `json:"supervisor_pid,omitempty"`
-	SessionActive       bool     `json:"session_active"` // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
-	SessionPID          int      `json:"session_pid,omitempty"`
-	Stopped             bool     `json:"stopped"` // .ai/STOP 存在
-	Phase               string   `json:"phase"`
-	Iteration           int      `json:"iteration"`
-	CurrentTask         string   `json:"current_task"` // doing.yaml 的 id+title
-	Backlog             []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
-	BacklogCount        int      `json:"backlog_count"`
-	DoneCount           int      `json:"done_count"`
-	Paused              bool     `json:"paused"`
-	PausedQuestion      string   `json:"paused_question,omitempty"`
-	PausedAnswered      bool     `json:"paused_answered"`
-	Shippable           int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
-	DirtyCount          int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
-	LastRunStatus       string   `json:"last_run_status,omitempty"`
-	LastRunCost         string   `json:"last_run_cost,omitempty"`
-	LastRunAt           string   `json:"last_run_at,omitempty"`
-	Receipts            []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
-	DashboardReady      bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
-	ScheduleReady       bool     `json:"schedule_ready"`        // .ai/schedule.yml 存在才給連結
-	DevURL              string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
-	DevCommand          string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
-	DevServerRunning    bool     `json:"dev_server_running"`
-	DevServerPID        int      `json:"dev_server_pid,omitempty"`
-	SupervisorStartable bool     `json:"supervisor_startable"` // panel 有帶 -supervisor-script，可以從畫面啟動
+	Name                      string   `json:"name"`
+	Path                      string   `json:"path"`
+	Missing                   bool     `json:"missing"` // .ai/ 不存在
+	SupervisorAlive           bool     `json:"supervisor_alive"`
+	SupervisorPID             int      `json:"supervisor_pid,omitempty"`
+	SessionActive             bool     `json:"session_active"` // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
+	SessionPID                int      `json:"session_pid,omitempty"`
+	Stopped                   bool     `json:"stopped"` // .ai/STOP 存在
+	Phase                     string   `json:"phase"`
+	Iteration                 int      `json:"iteration"`
+	CurrentTask               string   `json:"current_task"` // doing.yaml 的 id+title
+	Backlog                   []string `json:"backlog"`      // 前 5 筆 "T-NNN title"
+	BacklogCount              int      `json:"backlog_count"`
+	DoneCount                 int      `json:"done_count"`
+	Paused                    bool     `json:"paused"`
+	PausedQuestion            string   `json:"paused_question,omitempty"`
+	PausedAnswered            bool     `json:"paused_answered"`
+	Shippable                 int      `json:"shippable"`   // ai/queue 領先主分支的 commit 數
+	DirtyCount                int      `json:"dirty_count"` // working tree 未 commit 的檔案數（未記帳警訊）
+	LastRunStatus             string   `json:"last_run_status,omitempty"`
+	LastRunCost               string   `json:"last_run_cost,omitempty"`
+	LastRunAt                 string   `json:"last_run_at,omitempty"`
+	Receipts                  []string `json:"receipts"`              // 最近 3 張 "日期/NNN [status] [human]? title"
+	DashboardReady            bool     `json:"dashboard_ready"`       // 卡片要不要顯示「儀表板」連結
+	ScheduleReady             bool     `json:"schedule_ready"`        // .ai/schedule.yml 存在才給連結
+	DevURL                    string   `json:"dev_url,omitempty"`     // ~/.aios-repos 該行第二欄（本機 dev server 網址，可選）
+	DevCommand                string   `json:"dev_command,omitempty"` // ~/.aios-repos 該行第三欄起（啟動 dev server 的指令，可選）
+	DevServerRunning          bool     `json:"dev_server_running"`
+	DevServerPID              int      `json:"dev_server_pid,omitempty"`
+	DevServerPersistReady     bool     `json:"dev_server_persist_ready"`     // 有帶 -devserver-launchd-script 且這個 repo 有設 dev_command，卡片才顯示 📌 開關
+	DevServerPersistInstalled bool     `json:"dev_server_persist_installed"` // 這個 repo 是否已裝 RunAtLoad launchd job（開機/登入自動啟動）
+	SupervisorStartable       bool     `json:"supervisor_startable"`         // panel 有帶 -supervisor-script，可以從畫面啟動
 }
 
 // DevConfig：~/.aios-repos 每行選填的第二、三欄——dev server 網址與啟動指令。
@@ -95,6 +100,11 @@ var dashboardScriptPath string
 // 空字串 = 卡片不顯示「啟動 supervisor」表單，維持純讀狀態。
 var supervisorScriptPath string
 
+// devserverLaunchdScriptPath：panel/devserver-launchd-install.sh 的路徑
+// （-devserver-launchd-script 設定）。空字串 = 卡片不顯示 📌 開機自動啟動
+// 開關，維持純讀狀態（跟 supervisorScriptPath 同一套設計）。
+var devserverLaunchdScriptPath string
+
 // allowedModels：啟動表單 model 下拉選單允許的值，避免亂傳字串給 claude CLI。
 var allowedModels = map[string]bool{"opus": true, "sonnet": true, "haiku": true}
 
@@ -103,9 +113,11 @@ func main() {
 	reposFlag := flag.String("repos", "", "逗號分隔的 repo 路徑；空 = 讀 ~/.aios-repos")
 	dashboardScript := flag.String("dashboard-script", "", "supervisor/dashboard.sh 的絕對路徑；設定後點卡片上的儀表板連結會先重算（1 分鐘內的快照直接沿用），不設就只讀既有的 .ai/reports/dashboard.html")
 	supervisorScript := flag.String("supervisor-script", "", "supervisor/supervisor.sh 的絕對路徑；設定後未執行中的 repo 卡片會多一個啟動表單（model/quota-wait/...），不設就不顯示（只能繼續用既有的 STOP/回覆）")
+	devserverLaunchdScript := flag.String("devserver-launchd-script", "", "panel/devserver-launchd-install.sh 的絕對路徑；設定後有 dev_command 的 repo 卡片會多一個 📌 開機自動啟動開關，不設就不顯示")
 	flag.Parse()
 	dashboardScriptPath = *dashboardScript
 	supervisorScriptPath = *supervisorScript
+	devserverLaunchdScriptPath = *devserverLaunchdScript
 
 	if len(loadRepos(*reposFlag)) == 0 {
 		fmt.Fprintln(os.Stderr, "沒有 repo：用 -repos /a,/b 或在 ~/.aios-repos 一行一個路徑")
@@ -254,6 +266,37 @@ func main() {
 			}
 		default:
 			http.Error(w, "action 必須是 start|stop", 400)
+			return
+		}
+		w.Write([]byte("ok"))
+	})
+	http.HandleFunc("/api/devserver-persist", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		repo, action := r.FormValue("repo"), r.FormValue("action")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		if devserverLaunchdScriptPath == "" {
+			http.Error(w, "panel 沒有帶 -devserver-launchd-script，無法從畫面安裝開機自動啟動", 400)
+			return
+		}
+		var args []string
+		switch action {
+		case "install":
+			args = []string{"--repo", repo}
+		case "uninstall":
+			args = []string{"--repo", repo, "--uninstall"}
+		default:
+			http.Error(w, "action 必須是 install|uninstall", 400)
+			return
+		}
+		out, err := exec.Command(devserverLaunchdScriptPath, args...).CombinedOutput()
+		if err != nil {
+			http.Error(w, strings.TrimSpace(string(out)), 500)
 			return
 		}
 		w.Write([]byte("ok"))
@@ -670,6 +713,31 @@ func devServerStatus(path, devURL string) (bool, int) {
 	return false, 0
 }
 
+// devServerPersistPlist：panel/devserver-launchd-install.sh 幫這個 repo
+// 裝的 RunAtLoad launchd job 的 plist 路徑——slug 規則跟 devServerID()
+// 共用同一份（腳本內用同樣的 sed 正規化規則手動重算一次），兩邊算出來
+// 保證是同一個檔名，panel 才認得腳本裝的東西。
+func devServerPersistPlist(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", "com.aios.devserver."+devServerID(path)+".plist")
+}
+
+// devServerPersistInstalled：純粹看 plist 檔存不存在——不查 launchctl list
+// （job 可能剛開機、還沒被 launchd 排進去，或使用者手動 bootout 過但沒刪
+// plist），檔案存在就代表「上次是透過這支腳本裝的」，跟腳本自己 --status
+// 的判斷分開，這裡只用來決定卡片顯示「📌 已裝」或「📌 設開機自動啟動」。
+func devServerPersistInstalled(path string) bool {
+	p := devServerPersistPlist(path)
+	if p == "" {
+		return false
+	}
+	_, err := os.Stat(p)
+	return err == nil
+}
+
 // startDevServer：`sh -c command` 在自己的 process group 起（Setpgid），
 // 這樣 stop 時可以用 -pid 把整棵子行程樹（例如 `npm run dev` 底下真正
 // 幹活的 `next-server`）一起收掉，不留孤兒行程。輸出導去 log 檔，
@@ -741,7 +809,9 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		SupervisorStartable: supervisorScriptPath != ""}
 	if devCfg.Command != "" {
 		s.DevServerRunning, s.DevServerPID = devServerStatus(path, devCfg.URL)
+		s.DevServerPersistInstalled = devServerPersistInstalled(path)
 	}
+	s.DevServerPersistReady = devserverLaunchdScriptPath != "" && devCfg.Command != ""
 	ai := filepath.Join(path, ".ai")
 	if _, err := os.Stat(ai); err != nil {
 		s.Missing = true

@@ -65,6 +65,8 @@ PLIST_BODY=$(cat <<EOF
     <string>${ROOT_DIR}/supervisor/dashboard.sh</string>
     <string>-supervisor-script</string>
     <string>${ROOT_DIR}/supervisor/supervisor.sh</string>
+    <string>-devserver-launchd-script</string>
+    <string>${ROOT_DIR}/panel/devserver-launchd-install.sh</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

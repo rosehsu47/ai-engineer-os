@@ -24,7 +24,15 @@ aios-panel -repos /path/a,/path/b \
   -supervisor-script /path/to/ai-engineer-os/supervisor/supervisor.sh
 ```
 
-兩個 `-*-script` flag 可以一起帶。
+想讓有 dev_command 的 repo 卡片上出現「📌 開機自動啟動」開關（見下「dev
+server 開機自動啟動」），再多帶一個 flag：
+
+```bash
+aios-panel -repos /path/a,/path/b \
+  -devserver-launchd-script /path/to/ai-engineer-os/panel/devserver-launchd-install.sh
+```
+
+三個 `-*-script` flag 可以一起帶。
 
 ## 開機/登入自動啟動
 
@@ -35,7 +43,8 @@ panel 真的常駐（跟 kotoba 那種靠 `supervisor/schedule-install.sh` 裝�
 
 ```bash
 panel/launchd-install.sh              # 安裝/更新（讀 ~/bin/aios-panel，帶
-                                       # -dashboard-script/-supervisor-script）
+                                       # -dashboard-script/-supervisor-script/
+                                       # -devserver-launchd-script）
 panel/launchd-install.sh --status     # 看目前載入狀態
 panel/launchd-install.sh --uninstall  # 移除（不會砍掉正在跑的 process）
 panel/launchd-install.sh --dry-run    # 只印 plist 不動系統
@@ -86,6 +95,14 @@ panel/devserver-launchd-install.sh --repo /path/to/repo --dry-run    # 只印 pl
 （`{slug}` 跟 panel 內部用的是同一個 sanitize 規則），逐 repo 各裝一份，
 彼此獨立。
 
+**也可以直接在 panel 卡片上按**（不用開終端機）：有帶 `-devserver-launchd-script`
+時，dev server 那一列會多一顆「📌 設開機自動啟動」／「📌 開機自動啟動」
+開關，按一下就是呼叫這支腳本裝/卸（`repo` 走 argv 傳給 `exec.Command`，
+不經過 shell 展開，沒有指令注入面，跟啟動 supervisor 那個 endpoint 同一
+信任層級）。卡片上顯示的「已裝」狀態純看 plist 檔存不存在，跟這個 repo
+的 dev server 現在是不是正在跑無關——裝了之後不會立刻啟動，要等下次
+登入，或你自己按「▶ 啟動」。
+
 ## 畫面上有什麼（每 5 秒自動更新）
 
 標題列下方會顯示本機內網 IP（純參考用——panel 仍只綁 127.0.0.1，這個
@@ -135,7 +152,11 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   寫入順序，這樣看到排第一筆的就真的是下一輪最可能被挑中的那筆
 - **dev server 啟動/停止**（第三欄設了指令才會出現）：▶ 啟動／■ 停止
   按鈕＋執行中/未啟動狀態，執行中會顯示 pid 與一個 log 連結（純文字，
-  開新分頁看 `sh -c "{指令}"` 的 stdout/stderr）
+  開新分頁看 `sh -c "{指令}"` 的 stdout/stderr）；有帶
+  `-devserver-launchd-script` 時同一列多一顆「📌 開機自動啟動」開關
+  （見上「dev server 開機自動啟動」），裝了之後開機/登入會自動啟動這個
+  dev server，用旁邊的 ■ 停止關掉就是真的關了（沒有 KeepAlive，不會被
+  拉回來）
 - **❓ 問答區**：agent 的 PAUSED 問題直接顯示，textarea 送出回覆
 - **🚢 出貨提示**：ai/queue 領先幾個 commit＋可複製的 `/ai-ship` 指令
 - **STOP 煞車／解除**按鈕
@@ -157,8 +178,8 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - **出貨（git push）與 merge 永遠不在 panel 裡發生**——那是對外動作，
   留在你的終端機與 GitHub
 
-**有兩個例外真的會在本機 spawn 長駐/一次性行程，不是協定檔讀寫**——
-刻意跟協定狀態分開處理，把風險收斂到最小：
+**有三個例外真的會在本機 spawn 長駐/一次性行程或動系統層設定，不是協定
+檔讀寫**——刻意跟協定狀態分開處理，把風險收斂到最小：
 
 **dev server 啟動/停止**：
 - 指令只能來自你自己維護的 `~/.aios-repos`（本機檔案，不是網路輸入、
@@ -189,5 +210,18 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
   就會偵測。log 只到 `~/.aios-panel-state/`，不影響 `.ai/` 底下
   supervisor.sh 自己寫的 events/receipts 稽核紀錄
 
-所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的協定狀態（這兩個
+**dev server 開機自動啟動**（需 `-devserver-launchd-script`，見上）：
+- `repo` 值走 `exec.Command` 的 argv 傳給
+  `panel/devserver-launchd-install.sh`，不經過 shell 展開，沒有指令注入
+  面；實際指令內容照舊只能來自 `~/.aios-repos`，跟 dev server 啟動/停止
+  同一個信任層級
+- 唯一會動系統層設定的功能——會寫 `~/Library/LaunchAgents/*.plist`、呼叫
+  `launchctl bootstrap/bootout`，這兩個是 macOS 帳號層級的設定，不是
+  panel 自己管得到的檔案；panel 只負責照按鈕動作呼叫腳本，plist 內容/
+  launchctl 呼叫全部在腳本裡，panel 沒有自己組 XML
+- 卡片顯示的「已裝」狀態純看 plist 檔存不存在（`os.Stat`），不會另外呼叫
+  `launchctl list` 查即時狀態——這是唯讀判斷，跟腳本自己的 `--status`
+  分開，不會互相影響
+
+所以 panel 壞了/沒開，系統照常運作；它沒有任何獨占的協定狀態（這三個
 才是會留下本機執行副作用的功能，都跟 `.ai/` 協定本身的正確性無關）。
