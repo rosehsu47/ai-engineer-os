@@ -9,6 +9,9 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- fix(panel): make .row a flex container so .abtn buttons truly share alignment
+- fix(panel): rename 立即中斷 to FORCE STOP for a clearer STOP/FORCE STOP pairing
+- fix(panel): align .abtn button heights, color-code STOP vs 立即中斷
 - docs: clarify .ai/STOP is a soft stop, not the source of orphaned tasks
 - fix(panel): resolve claude CLI dir into launchd PATH, not just a hardcoded list
 - fix(panel): replace emoji button icons with real SVG icons, unify button sizing
