@@ -54,6 +54,15 @@ fi
 
 mkdir -p "$STATE_DIR"
 
+# claude CLI 常裝在 nvm/~/.local/bin 這種不在 launchd 預設 PATH 裡的地方
+# （跟 supervisor/schedule-install.sh 的 JOB_PATH 同一招）——寫死那份短
+# PATH 清單會讓 panel 從畫面點「啟動 supervisor」時，supervisor.sh 在
+# launchd 給的窄 PATH 下找不到 claude，process 立刻死掉、從沒寫入
+# lock，UI 完全看不出來發生過什麼事（實測踩過：按鈕有反應、畫面卻沒
+# 變化，log 裡才看得到「找不到 claude CLI」）。
+CLAUDE_DIR=$(dirname "$(command -v claude 2>/dev/null || echo /usr/local/bin/claude)")
+JOB_PATH="${CLAUDE_DIR}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
 PLIST_BODY=$(cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -71,7 +80,7 @@ PLIST_BODY=$(cat <<EOF
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>${JOB_PATH}</string>
   </dict>
   <key>StandardOutPath</key><string>${STATE_DIR}/launchd.log</string>
   <key>StandardErrorPath</key><string>${STATE_DIR}/launchd.log</string>
