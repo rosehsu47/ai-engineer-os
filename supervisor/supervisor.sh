@@ -630,7 +630,7 @@ NET_MAX=$(sched_get network_backoff_max_seconds 900)
 MAX_COST=$(sched_get max_cost_per_run_usd 20)
 MODEL="${MODEL:-$(sched_get claude_model sonnet)}"
 SCHED_FLAGS=$(sched_get extra_claude_flags "")
-REVIEW="${REVIEW:-$(sched_get review_after_task false)}"
+REVIEW="${REVIEW:-$(sched_get review_after_task true)}"
 if [ "$WAIT_ON_PAUSE_SET" = 0 ] && [ "$(sched_get wait_on_pause false)" = true ]; then
   WAIT_ON_PAUSE=1
 fi
