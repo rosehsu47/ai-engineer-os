@@ -27,7 +27,14 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .status-header{font-size:13px;font-weight:700;color:#e2e8f0;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid #263047;display:flex;align-items:center;gap:8px}
  .status-header:first-child{margin-top:0}
  .status-header .count{font-weight:400;color:#8b98ac;font-size:12px}
- .row{font-size:12.5px;margin:12px 0 4px;color:#94a3b8}
+ /* display:flex + align-items:center（跟 .rrow 同一招）——.row 底下常常
+    混著文字／<b>／<a>／一到兩顆 .abtn 按鈕，靠純 inline 排版時每個
+    元素的 vertical-align:baseline 是各自算的，「純文字按鈕」跟「圖示+
+    文字按鈕」因為內容不同，瀏覽器算出來的 baseline 基準點不一樣，就算
+    按鈕本身 height 相同也會看起來位置對不齊（實測過）。用 flex 容器讓
+    所有子元素統一用 cross-axis 置中對齊，才是真的從根本讓同一列裡的
+    元件對齊，不是逐一調整每顆按鈕去猜。 */
+ .row{display:flex;align-items:center;flex-wrap:wrap;font-size:12.5px;margin:12px 0 4px;color:#94a3b8}
  .stats{display:flex;align-items:center;gap:12px;font-size:12.5px;color:#94a3b8;margin:14px 0}
  .stats .bar{flex:1;height:6px;background:#1e293b;border-radius:99px;overflow:hidden}
  .stats .bar i{display:block;height:100%;background:#34d399;border-radius:99px}
@@ -76,7 +83,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
     inline 元素跟文字基線對齊時，撐開的行高比純文字高一截），交給 flex
     的 align-items:center 置中內容才能讓所有按鈕高度真正一致，不能只靠
     padding 撐（那樣高度還是跟著內容變）。 */
- .abtn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:30px;border-radius:9px;padding:0 12px;font-size:12px;font-weight:600;line-height:1;cursor:pointer;border:1px solid transparent;margin-left:6px;box-sizing:border-box}
+ .abtn{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;gap:5px;height:30px;border-radius:9px;padding:0 12px;font-size:12px;font-weight:600;line-height:1;cursor:pointer;border:1px solid transparent;margin-left:6px;box-sizing:border-box}
  .abtn svg{width:13px;height:13px;flex-shrink:0;display:block}
  .abtn.primary{background:#4f46e5;color:#fff;border-color:#4f46e5}
  .abtn.primary:hover{background:#4338ca}
