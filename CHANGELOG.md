@@ -7,6 +7,10 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 想看「為什麼改、怎麼修的、以後怎麼避免」，見 [`LESSONS.md`](LESSONS.md)——
 這份只列「改了什麼」。
 
+## 2026-09-02
+
+- docs(supervisor): add schedule.yml key reference table
+
 ## 2026-09-01
 
 - fix(panel): sort backlog by priority, not file order
