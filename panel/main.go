@@ -14,14 +14,16 @@
 //	不 fetch 的話本地 main 會一直落後，「可出貨」數字就卡在合併前的舊值。
 //	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
 //	三個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
-//	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單、
-//	-devserver-launchd-script 有設時的「📌 開機自動啟動」開關——前兩者
-//	是 spawn 真的行程，第三個是動系統層 launchd 設定（寫 plist、呼叫
-//	launchctl），都刻意跟 .ai/ 狀態切開：dev server 的 pid/log 存
-//	~/.aios-panel-state/，supervisor.sh 則是它自己的
+//	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單
+//	（連同「⛔ 中斷」——只在 session lock 沒被持有、確認閒置時才放行的
+//	直接 kill）、-devserver-launchd-script 有設時的「📌 開機自動啟動」
+//	開關——前兩者是 spawn/kill 真的行程，第三個是動系統層 launchd 設定
+//	（寫 plist、呼叫 launchctl），都刻意跟 .ai/ 狀態切開：dev server 的
+//	pid/log 存 ~/.aios-panel-state/，supervisor.sh 則是它自己的
 //	`.ai/supervisor/lock`／STOP 協定照舊不變，panel 只負責照表單值組
-//	argv 呼叫它、不額外維護一份自己的執行狀態；devserver-launchd 的
-//	plist 存 ~/Library/LaunchAgents/，panel 只 exec 腳本、不自己組 XML。
+//	argv 呼叫它、或在確認安全時直接 kill 它的 process group，不額外
+//	維護一份自己的執行狀態；devserver-launchd 的 plist 存
+//	~/Library/LaunchAgents/，panel 只 exec 腳本、不自己組 XML。
 //
 // 用法：
 //
@@ -381,6 +383,35 @@ func main() {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		w.Write([]byte("ok"))
+	})
+	http.HandleFunc("/api/supervisor-kill", func(w http.ResponseWriter, r *http.Request) {
+		// 「立即中斷」不是 STOP 的替代品——STOP 是寫信號旗、等 supervisor.sh
+		// 自己在安全點退出，永遠不會弄髒狀態，但要等到下個檢查點（可能還在
+		// 跑一輪 /ai-work）。這支是真的 kill -TERM/-KILL 那個 process，只在
+		// 確認「現在沒有 /ai-work／/ai-review 正在跑」（session lock 沒被
+		// 持有）才放行——這代表 supervisor.sh 正卡在 iteration 之間的
+		// sleep／quota-wait 輪詢，沒有任何檔案正在被寫，直接殺掉不會留下
+		// 半寫入的狀態，本來就不需要、也不支援 resume 這一輪。
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		repo := r.FormValue("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		alive, pid := supervisorLockStatus(repo)
+		if !alive {
+			http.Error(w, "supervisor 沒有在跑，沒東西可以中斷", 409)
+			return
+		}
+		if active, spid := sessionLockStatus(repo); active {
+			http.Error(w, fmt.Sprintf("正在跑 /ai-work 或 /ai-review（pid %d）——這時候中斷可能留下沒寫完的狀態，先用 STOP 煞車等這輪跑完，或等它進到閒置階段（等新任務／等 quota reset）再中斷", spid), 409)
+			return
+		}
+		killProcessGroup(pid)
 		w.Write([]byte("ok"))
 	})
 	http.HandleFunc("/api/supervisorlog", func(w http.ResponseWriter, r *http.Request) {
@@ -779,6 +810,23 @@ func startDevServer(path string, cfg DevConfig) error {
 // SIGKILL。負 pid＝殺整個 group（Setpgid 保證這個 group 只有這棵樹）。
 // 只能關 panel 自己追蹤到 pid 的那個；如果偵測到 port 有人占用但不是
 // 我們啟動的，明確告知使用者，不假裝關掉了。
+// killProcessGroup：SIGTERM 整個 process group，給 2 秒優雅關閉，逾時才
+// SIGKILL。負 pid＝殺整個 group——前提是那個 pid 本身就是 group leader
+// （Setpgid 啟動的都是：dev server 的 startDevServer()、supervisor.sh
+// 被 startSupervisor() 啟動時）。stopDevServer／supervisor-kill 共用。
+func killProcessGroup(pid int) {
+	syscall.Kill(-pid, syscall.SIGTERM)
+	for range 20 {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if syscall.Kill(pid, 0) == nil {
+		syscall.Kill(-pid, syscall.SIGKILL)
+	}
+}
+
 func stopDevServer(path, devURL string) error {
 	running, pid := ownPidStatus(path)
 	if !running {
@@ -788,16 +836,7 @@ func stopDevServer(path, devURL string) error {
 		}
 		return nil
 	}
-	syscall.Kill(-pid, syscall.SIGTERM)
-	for range 20 {
-		if syscall.Kill(pid, 0) != nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if syscall.Kill(pid, 0) == nil {
-		syscall.Kill(-pid, syscall.SIGKILL)
-	}
+	killProcessGroup(pid)
 	os.Remove(devPidFile(path))
 	return nil
 }
