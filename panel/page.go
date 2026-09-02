@@ -70,6 +70,8 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .pin-btn.on{border-color:#4f46e5;color:#a5b4fc;background:#4f46e51a}
  .killbtn{display:inline-flex;align-items:center;gap:4px;border:1px solid #7f1d1d;border-radius:9px;background:#450a0a33;color:#f87171;font-size:11px;padding:4px 8px;margin-left:6px;cursor:pointer}
  .killbtn:hover{background:#7f1d1d55;color:#fca5a5}
+ .stopbtn-sm{display:inline-flex;align-items:center;gap:4px;border:1px solid #7f1d1d66;border-radius:9px;background:transparent;color:#fca5a5;font-size:11px;padding:4px 8px;margin-left:6px;cursor:pointer}
+ .stopbtn-sm:hover{background:#7f1d1d1a;border-color:#7f1d1d}
  .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:#1e293b;color:#38bdf8;flex-shrink:0}
  .icon-btn:hover{background:#334155;color:#7dd3fc}
  .icon-btn svg{width:14px;height:14px}
@@ -172,9 +174,13 @@ function supervisorBox(s){
     // 只在它閒置（等新任務／等 quota reset，卡在 do_sleep）時才給
     // ⛔ 中斷按鈕，不然只顯示原因，不放按鈕誤導使用者。
     const safeIdle=!s.session_active;
+    // STOP 跟 ⛔ 中斷放在同一行，順便讓兩者的差異一眼看出來：STOP 是
+    // 「寫信號旗，下一個檢查點才生效，不會打斷正在跑的這一輪」（跟卡片
+    // 最下面那顆大按鈕是同一個動作，data-act="stop" 走同一條路，這裡
+    // 只是就近多一顆方便按的，不是另一個功能）；⛔ 中斷才是「立刻」。
     return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
       '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
-      ' <span class="muted">· 用下方 STOP 按鈕煞車</span>'+
+      ' <button class="stopbtn-sm" data-act="stop" data-repo="'+esc(s.path)+'" title="寫 .ai/STOP——supervisor.sh 下一個檢查點會偵測到並優雅退出，不會打斷正在跑的這一輪">STOP</button>'+
       (safeIdle
         ? ' <button class="killbtn" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">⛔ 中斷</button>'
         : ' <span class="muted">· 正在跑一輪 /ai-work／/ai-review，等它閒置才能安全中斷</span>')+
