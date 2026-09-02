@@ -583,7 +583,11 @@ document.getElementById('grid').addEventListener('click', async e=>{
       post('/api/supervisor-kill',{repo:repo});
     } else if(b.dataset.act==='supstart'){
       const box=b.closest('.supform');
-      if(qchk(box,'sf-yolo') && !confirm('確定要用 --yolo（跳過權限確認）啟動嗎？只在信任的 repo 用。')) return;
+      // 啟動前一定先給看一次等效指令再按確定——跟 .cmdpreview 是同一份
+      // supArgsPreview() 算出來的字串，不是另外重組一份，兩處保證一致。
+      // 有勾 --yolo 額外加一句警語，不算獨立的第二個 confirm。
+      const yoloWarn=qchk(box,'sf-yolo')?'\n\n⚠ 有勾 --yolo（跳過權限確認），只在信任的 repo 用。':'';
+      if(!confirm('確定要用這個指令啟動 supervisor 嗎？\n\n'+supArgsPreview(box)+yoloWarn)) return;
       post('/api/supervisor',{repo:repo,action:'start',model:qval(box,'sf-model'),
         quota_wait:qval(box,'sf-quota-wait'),quota_stop:qval(box,'sf-quota-stop'),
         max_iterations:qval(box,'sf-max-iterations'),max_failures:qval(box,'sf-max-failures'),

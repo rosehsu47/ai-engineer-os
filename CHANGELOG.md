@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- feat(panel): confirm dialog previews the equivalent command before starting supervisor
 - feat(panel): distinguish '煞車生效中' (stopping) from '已煞車' (stopped)
 - fix(panel): consolidate remaining button styles into the .abtn component library
 - fix(panel): make .row a flex container so .abtn buttons truly share alignment
