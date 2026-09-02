@@ -26,6 +26,27 @@ aios-panel -repos /path/a,/path/b \
 
 兩個 `-*-script` flag 可以一起帶。
 
+## 開機/登入自動啟動
+
+手動 `go run .`／`aios-panel` 起的 process，重開機或當掉就沒了。想要
+panel 真的常駐（跟 kotoba 那種靠 `supervisor/schedule-install.sh` 裝的
+定時 supervisor job 不一樣——那是「固定時刻跑一輪」，這裡是「開機/登入
+就啟動、當掉自動重開」）：
+
+```bash
+panel/launchd-install.sh              # 安裝/更新（讀 ~/bin/aios-panel，帶
+                                       # -dashboard-script/-supervisor-script）
+panel/launchd-install.sh --status     # 看目前載入狀態
+panel/launchd-install.sh --uninstall  # 移除（不會砍掉正在跑的 process）
+panel/launchd-install.sh --dry-run    # 只印 plist 不動系統
+```
+
+用 macOS 原生 launchd（`RunAtLoad` + `KeepAlive`），單例（整台機器一份，
+不分 repo，label 固定 `com.aios.panel`）。要先 `go build -o ~/bin/aios-panel .`
+把 binary 生出來，腳本會檢查、沒有就提示怎麼 build。log 在
+`~/.aios-panel-state/launchd.log`。repo 清單一樣讀 `~/.aios-repos`，
+熱重載，不用重裝 job 就能加新 repo。
+
 repo 清單**熱重載**：`~/.aios-repos` 每次輪詢重讀，新 repo append 進去
 （/ai-init 收尾會自動做）5 秒內卡片就出現，panel 不用重啟。
 

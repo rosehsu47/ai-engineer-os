@@ -167,6 +167,7 @@ Human interaction layer (no YAML editing needed):
 
 ```bash
 /ai-task 一句話描述想做什麼      # guided task creation: choices + drafted acceptance
+/ai-config                       # guided schedule.yml tuning, no hand-edited YAML
 /ai-answer                       # answer a PAUSED agent via multiple choice
 cd panel && go run . -repos /a,/b   # local control panel: http://127.0.0.1:7777
                                     # multi-repo status, inline answers, STOP buttons,

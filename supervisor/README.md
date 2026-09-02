@@ -33,7 +33,9 @@ touch /path/to/repo/.ai/STOP                              # 隨時煞車
 
 參數預設值都在目標 repo 的 `.ai/schedule.yml`（扁平 key，模板見
 [`../templates/ai/schedule.yml`](../templates/ai/schedule.yml)，每個 key
-上面本來就有註解——那份是最權威的來源，這裡是集中對照表）：
+上面本來就有註解——那份是最權威的來源，這裡是集中對照表）。**不想手改
+YAML 的話，在目標 repo 跑 `/ai-config`**：問答方式逐項調整、只改有改動
+的那幾行，跟下面這張表同一套解釋：
 
 | key | 預設 | 說明 |
 |---|---|---|
