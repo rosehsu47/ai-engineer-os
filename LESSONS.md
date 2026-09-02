@@ -44,3 +44,10 @@ description）。只寫「這個專案特有的、直覺會出錯的地方」。
 - **根因**：`.ai/state/session.lock` 的存活判斷原本只看 `kill -0 <pid>`——單次 `/ai-work` 呼叫被 watchdog 砍掉時沒機會清空自己的 lock，殘留的 pid 之後可能被作業系統回收給不相干的行程，`kill -0` 對這種「巧合存活」一樣回傳成功，孤兒 lock 就永遠不會被判定過期
 - **修法**：`AI-RUNTIME.md` 補上「session.lock 存活要同時滿足 `kill -0` 成功且檔案 mtime 在 2 小時內」的規則；`templates/skills/ai-work`、`ai-review`、`ai-task`、`ai-wrap` 的 lock 檢查步驟同步加上 mtime 門檻；`panel/main.go` 的 `sessionLockStatus()` 加 `sessionLockMaxAge`（2 小時）常數與 `time.Since(info.ModTime())` 檢查。**只套用在 session.lock**，`supervisor/lock` 橫跨整個無人迴圈，合法存活時間本來就可能數小時以上，不能套同一個門檻
 - **以後的追問**：任何用 pid 檔案判斷「行程還在跑」的機制，都要問「如果這個 pid 已經死了、被系統回收給別的行程，我的檢查會不會被騙？」——純 `kill -0` 永遠不夠，要嘛疊時間戳門檻，要嘛記錄行程啟動時間一起比對
+
+### 2026-09-02 — panel「啟動 supervisor」按鈕有反應但畫面沒變化：launchd PATH 找不到 claude CLI
+
+- **症狀指紋**：panel 畫面點「啟動 supervisor」按鈕有點下去的感覺（POST 有送出，回 200），但卡片狀態完全沒變化、也沒有任何錯誤訊息跳出來
+- **根因**：`panel/launchd-install.sh` 產生的 plist 把 `PATH` 寫死成一份短清單（`/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin`），不含 `claude` CLI 實際安裝的目錄（例如 `~/.local/bin`、nvm 目錄）。panel 在這個窄 PATH 下 spawn `supervisor.sh`，該腳本內 `command -v claude` 檢查失敗，直接以 exit 69 死掉——**在寫入 `.ai/supervisor/lock` 之前就掛了**，panel 的 `/api/state` 從沒觀察到「活著」的瞬間，UI 自然看起來毫無變化。同一個 repo 早就有正確參考作法（`supervisor/schedule-install.sh` 用 `command -v claude` 動態解出目錄塞進 `JOB_PATH`），`panel/launchd-install.sh` 沒跟上，各寫各的
+- **修法**：`panel/launchd-install.sh` 改用跟 `supervisor/schedule-install.sh` 一致的 `CLAUDE_DIR=$(dirname "$(command -v claude 2>/dev/null || echo /usr/local/bin/claude)")`，塞進 `JOB_PATH` 再寫進 plist 的 `PATH`
+- **以後的追問**：panel 上任何「按鈕有反應（POST 成功／有 process 被 spawn）但卡片狀態完全沒變化」的症狀，先查 `~/.aios-panel-state/<repo-slug>.supervisor.log`（或對應的 log 檔）看那個 process 到底活了多久、死因是什麼，不要先懷疑前端 JS／CSS——尤其是透過 launchd 常駐的 process，它的環境變數（特別是 PATH）跟你互動 shell 的不是同一份，任何靠 `command -v` 找工具的檢查都可能在這裡被騙
