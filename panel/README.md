@@ -173,10 +173,17 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   存在、或有帶 `-dashboard-script` 時才出現）：開新分頁看 `dashboard.sh`
   渲染的任務統計/收據表/git 事件。有帶 `-dashboard-script` 時，點開若
   快照超過 1 分鐘會先重算；沒帶就只讀既有檔案，不會自動更新
-- **🕐 排程設定**圖示按鈕（`.ai/schedule.yml` 存在時才出現）：開新分頁
-  看該 repo `schedule.yml` 的原始內容（純唯讀，`/api/schedule` 直接
-  `ServeFile`）——想確認 `schedule_start_times`、`max_cost_per_run_usd`
-  這類參數目前設什麼值，不用自己開終端機 cat 檔案
+- **⚙ 排程設定**圖示按鈕（`.ai/schedule.yml` 存在時才出現）：開新分頁到
+  `/schedule?repo=...`——一個可編輯的表單頁（跟 `/ai-config` skill 問的
+  是同一組 16 個 key，分五類分組），改完按「儲存」直接寫回
+  `.ai/schedule.yml`，改完立即生效、不用重啟任何東西。表單值由
+  `/api/schedule-config`（GET 讀現況、POST 存檔）提供，跟主頁 SPA 同一套
+  fetch 模式；只精準取代有改動的那幾行，其餘行與註解不動（跟 `/ai-config`
+  skill 步驟 4 同一套紀律，見 `panel/schedule.go`）。頁面上也留了「查看
+  原始檔案」連結（`/api/schedule` 直接 `ServeFile`，純唯讀），想單純確認
+  目前值、不想手滑改到的話可以用這個。**panel 只存檔，不會自動 git
+  commit**——跟 `/ai-config` skill 會順手 commit 不一樣，改完記得自己
+  進 repo `git add .ai/schedule.yml && git commit`
 
 ## 設計原則（為什麼它做不了更多）
 
@@ -184,6 +191,9 @@ panel 只是**協定檔的讀者與寫者**——判斷力留在 agent：
 - 回覆只是「附寫進 `.ai/PAUSED` 的 `## 人類回覆` 節」；怎麼路由到任務/
   記憶由下一輪 `/ai-work` 統一處理（跟 `/ai-answer` 寫的回覆走同一條路）
 - STOP/恢復 = 建立/刪除信號旗檔案
+- **排程設定表單寫 `.ai/schedule.yml`**：這份本來就是純數字/開關的人類
+  調參檔（agent 也不能碰，deny 名單上），不是判斷力/協定執行檔，寫入
+  不用經過任何 agent 決策，性質跟前兩者一樣安全
 - **出貨（git push）與 merge 永遠不在 panel 裡發生**——那是對外動作，
   留在你的終端機與 GitHub
 

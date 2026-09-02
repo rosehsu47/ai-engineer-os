@@ -138,7 +138,10 @@ const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&
 // Feather 風格線條 icon（MIT），不外連字型/CDN——inline SVG 保持零外部依賴
 const ICON_DASHBOARD='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>';
 const ICON_OPEN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>';
-const ICON_CLOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
+// ICON_SETTINGS：排程設定連結用——齒輪圖示比時鐘更準確表達「這裡可以
+// 調整設定」（原本用時鐘借代「排程時刻」，但這個連結現在打開的是可
+// 編輯表單，不只是時刻，齒輪更準）。
+const ICON_SETTINGS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const ICON_CHEVRON='<svg class="chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>';
 // 以下四個給按鈕內文字旁的小圖示用（跟上面同一套風格：24 viewBox、
 // currentColor 描邊，繼承按鈕文字色，不是另外上色的 emoji）。
@@ -363,8 +366,8 @@ function rowIcons(s){
   return '<span class="ricons">'+
     slot(s.dashboard_ready?'<a class="abtn icon subtle icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
      '" target="_blank" title="儀表板">'+ICON_DASHBOARD+'</a>':'')+
-    slot(s.schedule_ready?'<a class="abtn icon subtle icon-btn" href="/api/schedule?repo='+encodeURIComponent(s.path)+
-     '" target="_blank" title="排程設定（.ai/schedule.yml）">'+ICON_CLOCK+'</a>':'')+
+    slot(s.schedule_ready?'<a class="abtn icon subtle icon-btn" href="/schedule?repo='+encodeURIComponent(s.path)+
+     '" target="_blank" title="排程設定（.ai/schedule.yml）">'+ICON_SETTINGS+'</a>':'')+
     slot(s.dev_url?'<a class="abtn icon subtle icon-btn" href="'+esc(s.dev_url)+
      '" target="_blank" title="'+esc(s.dev_url)+'">'+ICON_OPEN+'</a>':'')+
    '</span>'; }

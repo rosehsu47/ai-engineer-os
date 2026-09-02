@@ -4,7 +4,10 @@
 //
 //	讀：supervisor lock（幾個 agent 在跑）、doing/backlog/done、checkpoint、
 //	    PAUSED、last_run、receipts frontmatter、ai/queue 領先數
-//	寫：只寫兩種協定檔——PAUSED 的「## 人類回覆」節、.ai/STOP 的建立/刪除
+//	寫：PAUSED 的「## 人類回覆」節、.ai/STOP 的建立/刪除，加上
+//	.ai/schedule.yml（見下、schedule.go）——這份不是判斷力/協定執行檔，
+//	是純數字/開關設定，沒有 agent 該不該做這件事的判斷成分，寫入風險
+//	跟前兩者同一等級（人類直接改值，不是 agent 決策）。
 //	出貨（push）是對外動作，panel 只顯示可出貨數量與 /ai-ship 指令。
 //	唯一例外：claude 帳號用量（/api/usage）——帳號層級、不是協定檔，
 //	查一次要 spawn `claude -p "/usage"`（非零成本，~0.5s），所以刻意
@@ -37,6 +40,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"net/url"
@@ -448,6 +452,69 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, filepath.Join(repo, ".ai", "schedule.yml"))
+	})
+	http.HandleFunc("/schedule", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		out := strings.ReplaceAll(scheduleFormHTML, "{{REPO_TEXT}}", html.EscapeString(repo))
+		out = strings.ReplaceAll(out, "{{REPO_URL}}", url.QueryEscape(repo))
+		fmt.Fprint(w, out)
+	})
+	http.HandleFunc("/api/schedule-config", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.FormValue("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		if _, err := os.Stat(filepath.Join(repo, ".ai", "schedule.yml")); err != nil {
+			http.Error(w, "找不到 .ai/schedule.yml——先跑過 /ai-init 才有這個檔案", 404)
+			return
+		}
+		if r.Method == http.MethodGet {
+			cur := readScheduleValues(repo)
+			out := map[string]string{}
+			for _, f := range scheduleFields {
+				if v, ok := cur[f.Key]; ok {
+					out[f.Key] = v
+				} else {
+					out[f.Key] = f.Default
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(out)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "GET|POST only", 405)
+			return
+		}
+		// 前端一律用 fetch 送出「完整一份」（包含勾選狀態明確轉成
+		// "true"/"false" 字串，不是原生 checkbox 表單那種「沒勾就整個欄位
+		// 消失」），這裡收到的欄位視為要更新的值，沒收到才略過不動。
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "無法解析表單", 400)
+			return
+		}
+		form := map[string]string{}
+		for _, f := range scheduleFields {
+			if r.Form.Has(f.Key) {
+				form[f.Key] = r.FormValue(f.Key)
+			}
+		}
+		updates, errMsg := validateScheduleUpdate(form)
+		if errMsg != "" {
+			http.Error(w, errMsg, 400)
+			return
+		}
+		if err := writeScheduleValues(repo, updates); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Write([]byte("ok"))
 	})
 
 	fmt.Printf("aios-panel: http://%s  （repos: %d 個，清單熱重載）\n", *addr, len(currentRepos()))
