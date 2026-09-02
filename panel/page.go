@@ -23,7 +23,7 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .repo.expanded .chevron{transform:rotate(90deg)}
  .rbody{padding:6px 22px 22px;border-top:1px solid #2a3654;display:flex;flex-direction:column}
  .dot{width:8px;height:8px;border-radius:99px;display:inline-block;flex-shrink:0}
- .running{background:#34d399}.idle{background:#64748b}.nobacklog{background:#475569}.stopped{background:#ef4444}.paused{background:#f59e0b}.waiting{background:#38bdf8}.missing{background:#334155}
+ .running{background:#34d399}.idle{background:#64748b}.nobacklog{background:#475569}.stopped{background:#ef4444}.stopping{background:#fb923c}.paused{background:#f59e0b}.waiting{background:#38bdf8}.missing{background:#334155}
  .status-header{font-size:13px;font-weight:700;color:#e2e8f0;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid #263047;display:flex;align-items:center;gap:8px}
  .status-header:first-child{margin-top:0}
  .status-header .count{font-weight:400;color:#8b98ac;font-size:12px}
@@ -157,20 +157,28 @@ async function post(url, data){ const b=new URLSearchParams(data);
 function stopRepo(repo,action){ post('/api/stop',{repo:repo,action:action}); }
 // statusOf：分組＋狀態燈共用同一套判斷。paused 拆成兩種：真的等你回覆
 // （paused）vs 已經回覆、只是還沒被下一輪 supervisor 消化（waiting）。
+// stopped 也拆成兩種：STOP 已經送出、但 supervisor.sh 的 process 還活著
+// （stopping——.ai/STOP 只在迴圈頂端／quota 軟門檻等待迴圈每
+// quota_wait_recheck_minutes 分鐘才檢查一次，最壞情況要等快 20 分鐘，
+// 不會馬上生效，見 supervisor/README.md「安全停止 vs 會製造孤兒行程的
+// 動作」）vs process 真的已經退出（stopped）——不然按了 STOP 之後畫面
+// 一路顯示「🔴 已煞車」會讓人以為已經停了，實際上 supervisor 還在跑。
 function statusOf(s){ if(s.missing) return 'missing';
+  if(s.stopped && s.supervisor_alive) return 'stopping';
   if(s.stopped) return 'stopped';
   if(s.paused && !s.paused_answered) return 'paused';
   if(s.supervisor_alive || s.session_active) return 'running';
   if(s.paused) return 'waiting';
   if(s.backlog_count===0) return 'nobacklog';
   return 'idle'; }
-const STATUS_ORDER=['paused','stopped','running','waiting','idle','nobacklog','missing'];
-const STATUS_LABEL={paused:'❓ 需要你回覆',stopped:'🔴 已煞車',running:'🟢 執行中',
+const STATUS_ORDER=['paused','stopped','stopping','running','waiting','idle','nobacklog','missing'];
+const STATUS_LABEL={paused:'❓ 需要你回覆',stopped:'🔴 已煞車',stopping:'🟠 煞車生效中',running:'🟢 執行中',
   waiting:'🔵 已回覆，待下一輪',idle:'⚪ 待命',nobacklog:'⚫ 無待辦',missing:'⬜ 尚未 /ai-init'};
 function splitId(s){ const i=(s||'').indexOf(' '); if(i<0) return [s||'','']; return [s.slice(0,i), s.slice(i+1)]; }
 // rowMeta：收合列的一行摘要，依狀態挑最有資訊量的內容顯示。
 function rowMeta(s){
   if(s.missing) return '尚未 /ai-init';
+  if(s.stopped && s.supervisor_alive) return '已送出 STOP，等待安全點退出 · pid '+s.supervisor_pid;
   if(s.stopped) return 'stopped · 第'+s.iteration+' 輪';
   if(s.paused && !s.paused_answered) return (s.paused_question||'').split('\n')[0];
   if(s.supervisor_alive) return (s.phase||'executing')+' · pid '+s.supervisor_pid+(s.current_task?' · '+splitId(s.current_task)[1]:'');
@@ -207,12 +215,28 @@ function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S
 // 同時出現讓人搞不清楚順序（supervisor.sh 開跑會先看到 .ai/STOP 立刻退出）。
 function supervisorBox(s){
   if(s.supervisor_alive){
+    const safeIdle=!s.session_active;
+    // s.stopped 而且 process 還活著：STOP 已經送出但還沒生效——最壞
+    // 情況要等到下一個安全點（這一輪 /ai-work 跑完，或 quota 軟門檻
+    // 等待迴圈的下一次 recheck，預設 20 分鐘，見 supervisor/README.md
+    // 「安全停止 vs 會製造孤兒行程的動作」）。不能顯示「執行中」（會讓人
+    // 以為 STOP 沒生效／沒按到），也不能顯示「已煞車」（process 明明還
+    // 活著）——獨立一個「煞車生效中」分支，且不重複顯示 STOP 按鈕
+    // （已經按過了），只在確認閒置時留 FORCE STOP 讓使用者選擇不等。
+    if(s.stopped){
+      return '<div class="row">supervisor：<b style="color:#fb923c">煞車生效中</b>（pid '+s.supervisor_pid+'） '+
+        '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
+        ' <span class="muted">· 已送出 STOP，等下一個安全點退出（quota 等待中最壞要等 quota_wait_recheck_minutes，預設 20 分鐘）</span>'+
+        (safeIdle
+          ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷，不用等它跑到下個檢查點">'+ICON_BAN+'<span>FORCE STOP</span></button>'
+          : '')+
+        '</div>';
+    }
     // session_active 在這裡代表「supervisor 自己這輪的 /ai-work 或
     // /ai-review 正在跑」（單一寫入者不變量下，supervisor 活著時
     // session lock 不可能是別人）——這時候中斷可能留下沒寫完的狀態，
     // 只在它閒置（等新任務／等 quota reset，卡在 do_sleep）時才給
     // FORCE STOP 按鈕，不然只顯示原因，不放按鈕誤導使用者。
-    const safeIdle=!s.session_active;
     // STOP 跟中斷放一起容易被當成同一件事的兩個按鈕（實測使用者回饋：
     // 意思太接近、光看不看 tooltip 分不出差別）——改用 STOP／FORCE STOP
     // 同字根命名，一眼就看得出兩者是「同一件事的兩種力道」，不用另外

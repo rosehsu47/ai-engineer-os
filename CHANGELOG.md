@@ -9,6 +9,8 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-02
 
+- feat(panel): distinguish '煞車生效中' (stopping) from '已煞車' (stopped)
+- fix(panel): consolidate remaining button styles into the .abtn component library
 - fix(panel): make .row a flex container so .abtn buttons truly share alignment
 - fix(panel): rename 立即中斷 to FORCE STOP for a clearer STOP/FORCE STOP pairing
 - fix(panel): align .abtn button heights, color-code STOP vs 立即中斷
