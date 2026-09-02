@@ -59,31 +59,28 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .qa{background:#78350f33;border:1px solid #b4530966;border-radius:12px;padding:10px}
  .qa pre{white-space:pre-wrap;font-size:12px;margin:0 0 8px;font-family:inherit;max-height:320px;overflow-y:auto}
  textarea{width:100%;box-sizing:border-box;background:#0a0f1c;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:8px;font-size:13px;min-height:60px}
- button{background:#334155;color:#e2e8f0;border:0;border-radius:9px;padding:7px 14px;font-size:12px;cursor:pointer;margin-top:6px}
- button:hover{background:#475569} button.primary{background:#4f46e5}
- .stopbtn{width:100%;background:transparent;border:1px solid #7f1d1d99;color:#fca5a5;border-radius:12px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px}
- .stopbtn:hover{background:#7f1d1d1a;border-color:#7f1d1d}
- .resumebtn{width:100%;background:transparent;border:1px solid #14532d99;color:#86efac;border-radius:12px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px}
- .resumebtn:hover{background:#14532d1a;border-color:#14532d}
  code{background:#334155;padding:2px 7px;border-radius:6px;font-size:12px;user-select:all}
  .ship{background:#064e3b55;border:1px solid #10b98155;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:12.5px}
  .dirty{background:#78350f33;border:1px solid #b4530966;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:#fbbf24}
  .ricons{display:flex;gap:6px;flex-shrink:0}
- .dev-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:9px;padding:0;margin:0;cursor:pointer;flex-shrink:0}
- .dev-btn svg{width:13px;height:13px}
- .dev-btn.start{background:#4f46e5;color:#fff} .dev-btn.start:hover{background:#4338ca}
- .dev-btn.stop{background:#1e293b;color:#f87171} .dev-btn.stop:hover{background:#334155}
- /* .abtn：卡片內「動作列」按鈕共用的統一尺寸（STOP／⛔ 中斷／📌 開機自動
-    啟動／dev server 啟停／啟動 supervisor）——只有顏色變體不同，padding／
-    字級／圖示大小固定，同一列不會忽大忽小。圖示一律用 svg（跟上面
-    ICON_* 常數同一套），不用 emoji：emoji 各平台字重/顏色不一致，跟
-    介面其他文字對不齊，也沒辦法用 currentColor 跟著按鈕狀態變色。 */
- /* height 寫死＋padding 只留水平方向：純文字（STOP）跟「svg+文字」
-    （中斷／停止／⛔／📌）兩種內容的 inline 排版天生高度不同（svg 當
-    inline 元素跟文字基線對齊時，撐開的行高比純文字高一截），交給 flex
-    的 align-items:center 置中內容才能讓所有按鈕高度真正一致，不能只靠
-    padding 撐（那樣高度還是跟著內容變）。 */
- .abtn{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;gap:5px;height:30px;border-radius:9px;padding:0 12px;font-size:12px;font-weight:600;line-height:1;cursor:pointer;border:1px solid transparent;margin-left:6px;box-sizing:border-box}
+ /* ============================================================
+    .abtn：整個檔案「所有按鈕／圖示連結」唯一的樣式來源。以前是
+    .stopbtn/.resumebtn/.dev-btn/.icon-btn/.adv-toggle/裸 button 五套
+    各自獨立的樣式，同一張卡片裡混著出現時尺寸/對齊沒有保證一致（踩過
+    這個坑：STOP 跟 FORCE STOP 大小、垂直位置對不上）。現在只有一個
+    base，兩層 modifier 疊加，新按鈕一律從這裡組合，不再開新 class：
+      尺寸（不寫＝行內小 pill）：.lg（滿版大按鈕，卡片主要動作）
+                                  .icon（純圖示正方形，收合列/連結用）
+      顏色：primary/neutral/outline(.on)/outline-danger/solid-danger/
+            outline-success/subtle（圖示連結用）/link（純文字展開收合）
+    圖示一律用 svg（ICON_* 常數），不用 emoji：emoji 各平台字重/顏色
+    不一致，也沒辦法用 currentColor 跟著按鈕狀態變色。
+    height 寫死（不是靠 padding 撐）＋vertical-align:middle＋外層 .row／
+    .rrow 本身也是 flex+align-items:center——三層一起保證「純文字」跟
+    「svg+文字」內容排出來的按鈕，尺寸和垂直位置都真的一致，不是碰運氣。
+    ============================================================ */
+ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+ .abtn{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;gap:5px;height:30px;border-radius:9px;padding:0 12px;font-size:12px;font-weight:600;line-height:1;cursor:pointer;border:1px solid transparent;margin-left:6px;box-sizing:border-box;text-decoration:none}
  .abtn svg{width:13px;height:13px;flex-shrink:0;display:block}
  .abtn.primary{background:#4f46e5;color:#fff;border-color:#4f46e5}
  .abtn.primary:hover{background:#4338ca}
@@ -96,15 +93,19 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
  .abtn.outline-danger:hover{background:#7f1d1d1a;border-color:#7f1d1d}
  .abtn.solid-danger{background:#450a0a33;color:#f87171;border-color:#7f1d1d}
  .abtn.solid-danger:hover{background:#7f1d1d55;color:#fca5a5}
- .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:#1e293b;color:#38bdf8;flex-shrink:0}
- .icon-btn:hover{background:#334155;color:#7dd3fc}
- .icon-btn svg{width:14px;height:14px}
- .icon-btn.ph{background:transparent;pointer-events:none}
+ .abtn.outline-success{background:transparent;color:#86efac;border-color:#14532d99}
+ .abtn.outline-success:hover{background:#14532d1a;border-color:#14532d}
+ .abtn.subtle{background:#1e293b;color:#38bdf8;border-color:transparent}
+ .abtn.subtle:hover{background:#334155;color:#7dd3fc}
+ .abtn.lg{width:100%;height:44px;padding:0 14px;font-size:13px;border-radius:12px;margin:16px 0 0;gap:8px}
+ .abtn.icon{width:28px;height:28px;padding:0;margin-left:0;border-radius:9px}
+ .abtn.icon svg{width:14px;height:14px}
+ .abtn.ph{background:transparent!important;border-color:transparent!important;pointer-events:none}
+ .abtn.link{height:auto;padding:2px 0;margin:0 0 2px;border:0;background:transparent;border-radius:0;font-weight:400;color:#7dd3fc}
+ .abtn.link:hover{color:#38bdf8;text-decoration:underline}
+ .abtn.link svg{width:12px;height:12px;margin-left:2px;transition:transform .15s}
+ .abtn.link.open svg{transform:rotate(180deg)}
  .supform{background:#0d1526;border-radius:12px;padding:14px 16px;margin-top:12px}
- .adv-toggle svg{width:12px;height:12px;margin-left:4px;vertical-align:-2px;transition:transform .15s}
- .adv-toggle.open svg{transform:rotate(180deg)}
- .supform .adv-toggle{background:transparent;color:#7dd3fc;border:0;padding:2px 0;margin:0 0 2px;font-size:12px;cursor:pointer}
- .supform .adv-toggle:hover{background:transparent;color:#38bdf8;text-decoration:underline}
  .supform .adv{margin-top:10px}
  .supform .caption{font-size:11px;color:#8b98ac;margin:0 0 10px}
  .supform .fields{display:flex;flex-wrap:wrap;gap:12px 22px;margin-bottom:12px}
@@ -240,7 +241,7 @@ function supervisorBox(s){
   if(!s.supervisor_startable || s.stopped) return '';
   return '<div class="supform" data-repo="'+esc(s.path)+'">'+
     '<div class="section-label" style="margin-top:0">啟動 supervisor</div>'+
-    '<button type="button" class="adv-toggle" data-act="advtoggle">進階設定'+ICON_CHEVRON_SM+'</button>'+
+    '<button type="button" class="abtn link adv-toggle" data-act="advtoggle">進階設定'+ICON_CHEVRON_SM+'</button>'+
     '<div class="adv" hidden>'+
     '<div class="caption">留白的欄位沿用 .ai/schedule.yml 的預設值（灰字為目前已知的預設值）</div>'+
     '<div class="fields">'+
@@ -324,15 +325,15 @@ function cardBody(s){
   if(list.length) h+=list.map(t=>taskRow('task-row',t)).join('');
   if(s.backlog_count > 5){
     h += full
-      ? '<button type="button" class="adv-toggle open" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">收合，只顯示前 5 筆'+ICON_CHEVRON_SM+'</button>'
-      : '<button type="button" class="adv-toggle" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">顯示全部 '+s.backlog_count+' 筆待辦'+ICON_CHEVRON_SM+'</button>';
+      ? '<button type="button" class="abtn link adv-toggle open" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">收合，只顯示前 5 筆'+ICON_CHEVRON_SM+'</button>'
+      : '<button type="button" class="abtn link adv-toggle" data-act="backlogtoggle" data-repo="'+esc(s.path)+'">顯示全部 '+s.backlog_count+' 筆待辦'+ICON_CHEVRON_SM+'</button>';
   }
   if((s.receipts||[]).length){ h+='<div class="section-label">最近收據</div>'+
     '<div class="receipts">'+s.receipts.map(receiptRow).join('')+'</div>'; }
   if(s.paused && !s.paused_answered){
     h+='<div class="qa" data-repo="'+esc(s.path)+'"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>'+
       '<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
-      '<button class="primary" data-act="answer" data-repo="'+esc(s.path)+'">送出回覆</button></div>'; }
+      '<button class="abtn primary" data-act="answer" data-repo="'+esc(s.path)+'"><span>送出回覆</span></button></div>'; }
   else if(s.paused && s.paused_answered){
     h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
        '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
@@ -344,25 +345,27 @@ function cardBody(s){
   if(s.shippable>0){
     h+='<div class="ship">🚢 ai/queue 領先 '+s.shippable+' 個 commit，可出貨：'+
        '<br><code>claude</code> 內執行 <code>/ai-ship '+esc(s.path)+'</code></div>'; }
-  if(s.stopped) h+='<button class="resumebtn" data-act="resume" data-repo="'+esc(s.path)+'">'+
-    '<span class="dot" style="background:currentColor"></span>解除煞車</button>';
-  else h+='<button class="stopbtn" data-act="stop" data-repo="'+esc(s.path)+'">'+
-    '<span class="dot" style="background:currentColor"></span>STOP 煞車</button>';
+  if(s.stopped) h+='<button class="abtn lg outline-success" data-act="resume" data-repo="'+esc(s.path)+'">'+
+    '<span class="dot" style="background:currentColor"></span><span>解除煞車</span></button>';
+  else h+='<button class="abtn lg outline-danger" data-act="stop" data-repo="'+esc(s.path)+'">'+
+    '<span class="dot" style="background:currentColor"></span><span>STOP 煞車</span></button>';
   return h; }
 // slot：固定位置的按鈕格——某個 repo 沒支援這個動作時，補一個同尺寸的
 // 隱形佔位（.ph），讓每一行的按鈕都對在同一欄，不會因為這個 repo 少了
 // 某個按鈕就讓後面的按鈕跟著往左飄。
-function slot(html){ return html || '<span class="icon-btn ph"></span>'; }
+function slot(html){ return html || '<span class="abtn icon subtle ph"></span>'; }
 // rowIcons：儀表板／排程／dev url 三個連結按鈕，永遠在收合列右側同一個
 // 位置（不用展開才點得到）。是 <a target="_blank">，點擊要讓瀏覽器自己
-// 開新分頁，不觸發收合列的展開/收合——見下面 click delegation 的例外判斷。
+// 開新分頁，不觸發收合列的展開/收合——見下面 click delegation 的例外判斷
+// （保留 icon-btn 這個標記 class 純供該處選取器用，樣式已經統一交給
+// .abtn icon subtle）。
 function rowIcons(s){
   return '<span class="ricons">'+
-    slot(s.dashboard_ready?'<a class="icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
+    slot(s.dashboard_ready?'<a class="abtn icon subtle icon-btn" href="/dashboard?repo='+encodeURIComponent(s.path)+
      '" target="_blank" title="儀表板">'+ICON_DASHBOARD+'</a>':'')+
-    slot(s.schedule_ready?'<a class="icon-btn" href="/api/schedule?repo='+encodeURIComponent(s.path)+
+    slot(s.schedule_ready?'<a class="abtn icon subtle icon-btn" href="/api/schedule?repo='+encodeURIComponent(s.path)+
      '" target="_blank" title="排程設定（.ai/schedule.yml）">'+ICON_CLOCK+'</a>':'')+
-    slot(s.dev_url?'<a class="icon-btn" href="'+esc(s.dev_url)+
+    slot(s.dev_url?'<a class="abtn icon subtle icon-btn" href="'+esc(s.dev_url)+
      '" target="_blank" title="'+esc(s.dev_url)+'">'+ICON_OPEN+'</a>':'')+
    '</span>'; }
 // rowDevBtn：收合列上的 ▶/■ 快速鍵，跟展開內容裡那份是同一個
@@ -370,8 +373,8 @@ function rowIcons(s){
 // 就能一鍵切換，兩者共存不衝突（都只是 POST /api/devserver）。
 function rowDevBtn(s){
   return slot(!s.dev_command ? '' : s.dev_server_running
-    ? '<button class="dev-btn stop" data-act="devstop" data-repo="'+esc(s.path)+'" title="停止 dev server'+(s.dev_server_pid?'（pid '+s.dev_server_pid+'）':'（非 panel 啟動，無法追蹤 pid）')+'">'+ICON_STOP_SQUARE+'</button>'
-    : '<button class="dev-btn start" data-act="devstart" data-repo="'+esc(s.path)+'" title="啟動 dev server">'+ICON_PLAY+'</button>'); }
+    ? '<button class="abtn icon neutral" data-act="devstop" data-repo="'+esc(s.path)+'" title="停止 dev server'+(s.dev_server_pid?'（pid '+s.dev_server_pid+'）':'（非 panel 啟動，無法追蹤 pid）')+'">'+ICON_STOP_SQUARE+'</button>'
+    : '<button class="abtn icon primary" data-act="devstart" data-repo="'+esc(s.path)+'" title="啟動 dev server">'+ICON_PLAY+'</button>'); }
 function item(s){
   const st=statusOf(s), expanded=s.path===expandedRepo;
   let h='<div class="repo'+(expanded?' expanded':'')+'" data-repo="'+esc(s.path)+'">'+
