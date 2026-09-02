@@ -15,8 +15,8 @@
 //	每個 repo 最多 60 秒 fetch 一次，離線/失敗就跳過不擋畫面。
 //	三個真的會留下本機執行副作用的例外（各自小節有詳細註解）：dev
 //	server 啟停、-supervisor-script 有設時的「啟動 supervisor」表單
-//	（連同「⛔ 中斷」——只在 session lock 沒被持有、確認閒置時才放行的
-//	直接 kill）、-devserver-launchd-script 有設時的「📌 開機自動啟動」
+//	（連同「立即中斷」——只在 session lock 沒被持有、確認閒置時才放行的
+//	直接 kill）、-devserver-launchd-script 有設時的「開機自動啟動」
 //	開關——前兩者是 spawn/kill 真的行程，第三個是動系統層 launchd 設定
 //	（寫 plist、呼叫 launchctl），都刻意跟 .ai/ 狀態切開：dev server 的
 //	pid/log 存 ~/.aios-panel-state/，supervisor.sh 則是它自己的

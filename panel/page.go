@@ -71,8 +71,13 @@ const pageHTML = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8
     字級／圖示大小固定，同一列不會忽大忽小。圖示一律用 svg（跟上面
     ICON_* 常數同一套），不用 emoji：emoji 各平台字重/顏色不一致，跟
     介面其他文字對不齊，也沒辦法用 currentColor 跟著按鈕狀態變色。 */
- .abtn{display:inline-flex;align-items:center;gap:5px;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:600;line-height:1.2;cursor:pointer;border:1px solid transparent;margin-left:6px}
- .abtn svg{width:13px;height:13px;flex-shrink:0}
+ /* height 寫死＋padding 只留水平方向：純文字（STOP）跟「svg+文字」
+    （中斷／停止／⛔／📌）兩種內容的 inline 排版天生高度不同（svg 當
+    inline 元素跟文字基線對齊時，撐開的行高比純文字高一截），交給 flex
+    的 align-items:center 置中內容才能讓所有按鈕高度真正一致，不能只靠
+    padding 撐（那樣高度還是跟著內容變）。 */
+ .abtn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:30px;border-radius:9px;padding:0 12px;font-size:12px;font-weight:600;line-height:1;cursor:pointer;border:1px solid transparent;margin-left:6px;box-sizing:border-box}
+ .abtn svg{width:13px;height:13px;flex-shrink:0;display:block}
  .abtn.primary{background:#4f46e5;color:#fff;border-color:#4f46e5}
  .abtn.primary:hover{background:#4338ca}
  .abtn.neutral{background:#1e293b;color:#e2e8f0;border-color:#334155}
@@ -198,17 +203,21 @@ function supervisorBox(s){
     // /ai-review 正在跑」（單一寫入者不變量下，supervisor 活著時
     // session lock 不可能是別人）——這時候中斷可能留下沒寫完的狀態，
     // 只在它閒置（等新任務／等 quota reset，卡在 do_sleep）時才給
-    // ⛔ 中斷按鈕，不然只顯示原因，不放按鈕誤導使用者。
+    // 立即中斷按鈕，不然只顯示原因，不放按鈕誤導使用者。
     const safeIdle=!s.session_active;
-    // STOP 跟 ⛔ 中斷放在同一行，順便讓兩者的差異一眼看出來：STOP 是
-    // 「寫信號旗，下一個檢查點才生效，不會打斷正在跑的這一輪」（跟卡片
-    // 最下面那顆大按鈕是同一個動作，data-act="stop" 走同一條路，這裡
-    // 只是就近多一顆方便按的，不是另一個功能）；⛔ 中斷才是「立刻」。
+    // STOP 跟立即中斷放一起容易被當成同一件事的兩個按鈕（實測使用者
+    // 回饋：文字都帶「停」，顏色又都紅，光看不看 tooltip 分不出差
+    // 別）——特意用顏色分級拉開差距：STOP 用跟 dev server「■ 停止」
+    // 同一套中性灰（這是「正常、隨時可按」的動作，跟卡片最下面那顆大
+    // 按鈕是同一個動作，data-act="stop" 走同一條路，這裡只是就近多一顆
+    // 方便按的）；只有立即中斷保留紅色——它才是真的不可逆、少用的那個，
+    // 紅色留給它才有警示意義。文字也從「中斷」改「立即中斷」，跟 STOP
+    // 的「之後」語意再拉開一次。
     return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
       '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
-      ' <button class="abtn outline-danger" data-act="stop" data-repo="'+esc(s.path)+'" title="寫 .ai/STOP——supervisor.sh 下一個檢查點會偵測到並優雅退出，不會打斷正在跑的這一輪"><span>STOP</span></button>'+
+      ' <button class="abtn neutral" data-act="stop" data-repo="'+esc(s.path)+'" title="寫 .ai/STOP——supervisor.sh 下一個檢查點會偵測到並優雅退出，不會打斷正在跑的這一輪"><span>STOP</span></button>'+
       (safeIdle
-        ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">'+ICON_BAN+'<span>中斷</span></button>'
+        ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">'+ICON_BAN+'<span>立即中斷</span></button>'
         : ' <span class="muted">· 正在跑一輪 /ai-work／/ai-review，等它閒置才能安全中斷</span>')+
       '</div>';
   }
