@@ -335,7 +335,21 @@ function persistBtn(s){
 // cardBody：展開後的完整內容（原本 card() 的全部細節），收合列只留
 // dot/名稱/一行摘要/時間——細節要選中才付出畫面成本。
 function cardBody(s){
-  let h=supervisorBox(s);
+  // ❓ agent 的問題放最上面——這是整張卡最急迫需要處理的事，原本排在
+  // 收據後面，有 backlog／收據多的 repo 要滑到底才看得到，使用者反饋
+  // 不方便。已回覆但還沒被下一輪消化的提示語意上跟這個問題是同一件事
+  // （回覆前後兩種狀態），一起挪上來。
+  let h='';
+  if(s.paused && !s.paused_answered){
+    h+='<div class="qa" data-repo="'+esc(s.path)+'"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>'+
+      '<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
+      '<button class="abtn primary" data-act="answer" data-repo="'+esc(s.path)+'"><span>送出回覆</span></button></div>'; }
+  else if(s.paused && s.paused_answered){
+    h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
+       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
+       '<br>下次想跳過這步：用 <code>--wait-on-pause</code>（或 schedule.yml 設 '+
+       '<code>wait_on_pause: true</code>）跑，撞到 PAUSED 不會退出，回覆後它自己 5 分鐘內接著跑</div>'; }
+  h+=supervisorBox(s);
   if(s.dev_command){
     if(s.dev_server_running){
       const who=s.dev_server_pid?'（pid '+s.dev_server_pid+'）':'（非 panel 啟動，無法追蹤 pid）';
@@ -365,15 +379,6 @@ function cardBody(s){
   }
   if((s.receipts||[]).length){ h+='<div class="section-label">最近收據</div>'+
     '<div class="receipts">'+s.receipts.map(receiptRow).join('')+'</div>'; }
-  if(s.paused && !s.paused_answered){
-    h+='<div class="qa" data-repo="'+esc(s.path)+'"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>'+
-      '<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
-      '<button class="abtn primary" data-act="answer" data-repo="'+esc(s.path)+'"><span>送出回覆</span></button></div>'; }
-  else if(s.paused && s.paused_answered){
-    h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
-       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
-       '<br>下次想跳過這步：用 <code>--wait-on-pause</code>（或 schedule.yml 設 '+
-       '<code>wait_on_pause: true</code>）跑，撞到 PAUSED 不會退出，回覆後它自己 5 分鐘內接著跑</div>'; }
   if(s.dirty_count>0){
     h+='<div class="dirty">⚠ working tree 有 '+s.dirty_count+' 個未 commit 檔案 —— 未記帳的工作，'+
        '互動 session 收尾記得跑 <code>/ai-wrap</code></div>'; }

@@ -131,7 +131,11 @@ FORCE STOP，不想等就可以直接按。
 置頂該卡；游標在回覆欄位裡時 `Cmd/Ctrl+Enter` 直接送出回覆。焦點靠
 repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
 
-每個 repo 一張卡：
+每個 repo 一張卡（展開內容由上到下）：
+- **❓ 問答區**（`s.paused` 時才出現，永遠排第一個）：agent 的 PAUSED
+  問題直接顯示，textarea 送出回覆；已回覆但還沒被下一輪消化時改顯示
+  提醒（見下方「你隨時可以介入」）。這是整張卡最急迫要處理的事，實測
+  使用者回饋放最下面、backlog／收據多的 repo 要滑到底才看得到很不方便
 - 狀態燈：🟢 執行中（含 pid）／⚪ 待命／⚫ 無待辦／❓ 等你回答／
   🔵 已回覆待下一輪／🔴 已煞車／🟠 煞車生效中（見上）。🟢 執行中**不分是 supervisor.sh 還是
   互動 session**——兩種鎖（`.ai/supervisor/lock`、`.ai/state/session.lock`，
@@ -184,7 +188,6 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   （見上「dev server 開機自動啟動」），裝了之後開機/登入會自動啟動這個
   dev server，用旁邊的 ■ 停止關掉就是真的關了（沒有 KeepAlive，不會被
   拉回來）
-- **❓ 問答區**：agent 的 PAUSED 問題直接顯示，textarea 送出回覆
 - **🚢 出貨提示**：ai/queue 領先幾個 commit＋可複製的 `/ai-ship` 指令
 - **STOP 煞車／解除**按鈕
 - **📊 儀表板**圖示按鈕（卡片標題列右側，`.ai/reports/dashboard.html`
