@@ -142,6 +142,11 @@ func main() {
 		if ip := firstLANIP(); ip != "" {
 			lanInfo = fmt.Sprintf("內網位址（僅供參考——panel 只綁 127.0.0.1，這個位址目前連不進來）：http://%s:%s", ip, port)
 		}
+		// no-store：這是整頁 SPA 的殼，改版後全靠瀏覽器重新整理才會換新
+		// 版本——瀏覽器快取只會讓「明明已經部署新版，畫面卻還是舊的」這種
+		// 混淆更容易發生（實測發生過：使用者看到的表單欄位比原始碼少，
+		// 純粹是分頁沒重新整理，不是真的少了程式碼）。
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, strings.Replace(pageHTML, "{{LAN_INFO}}", lanInfo, 1))
 	})
