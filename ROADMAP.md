@@ -57,11 +57,13 @@ C5 是持續性健壯度工作，不像 V1/P1 那樣急迫。
   它，只是誠實承認。修法路徑：`events.jsonl` 的 `iteration` 事件現在
   已經帶 `usage.cache_creation_input_tokens`/`cache_read_input_tokens`/
   `input_tokens`/`output_tokens`（2026-07-28 加進 `supervisor.sh`）——
-  這代表 supervisor 可以用 `shared/models.md` 的公開定價表（cache
-  write ≈1.25x/2x、cache read ≈0.1x base input）自己重新算一次成本，
-  不必只信任 CLI 自報的 `total_cost_usd`，兩者對不上時至少能標記
+  這代表 supervisor 可以用 [`shared/models.md`](shared/models.md)
+  的公開定價表（cache write ≈1.25x/2x、cache read ≈0.1x base input，
+  2026-09-03 已建檔，來源見該檔「資料來源與新鮮度」節）自己重新算一次
+  成本，不必只信任 CLI 自報的 `total_cost_usd`，兩者對不上時至少能標記
   「這輪成本是估算值，跟獨立試算差距 X%」，而不是沉默地把可能失真
-  的數字直接餵進 cost breaker 的門檻判斷。
+  的數字直接餵進 cost breaker 的門檻判斷。**交叉驗算邏輯本身還沒寫**，
+  這份檔案目前只是定價數字的參考來源。
 
 **C — 健壯性**
 - **C5 receipt 宣稱機械交叉驗證（`files_changed`）**：supervisor（純
