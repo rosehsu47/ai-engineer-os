@@ -9,6 +9,7 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-03
 
+- fix(panel): /api/supervisor-runlog only serves the last 500 lines
 - fix(panel): no-store on the page shell too, not just /api/state
 - fix(panel): isolate per-card render failures so one bad repo can't freeze the whole poll loop
 - docs(roadmap): create shared/models.md, resolving the dangling P1 citation

@@ -112,6 +112,10 @@ var devserverLaunchdScriptPath string
 // allowedModels：啟動表單 model 下拉選單允許的值，避免亂傳字串給 claude CLI。
 var allowedModels = map[string]bool{"opus": true, "sonnet": true, "haiku": true}
 
+// maxRunlogLines：/api/supervisor-runlog 只回最後這麼多行——run.log 純
+// append 沒有輪替，長期會無上限成長，這裡是唯一的緩解點。
+const maxRunlogLines = 500
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "監聽位址（僅限本機）")
 	reposFlag := flag.String("repos", "", "逗號分隔的 repo 路徑；空 = 讀 ~/.aios-repos")
@@ -447,8 +451,24 @@ func main() {
 			http.Error(w, "unknown repo", 400)
 			return
 		}
+		// run.log 是純 append（supervisor.sh:54 唯一的寫入路徑），沒有任何
+		// 輪替/截斷機制，長期跑下去無上限成長（實測 kotoba 兩個月已經
+		// 98KB/1109 行）。這裡只回最後 maxRunlogLines 行，不是整檔
+		// ServeFile——這個決定刻意只動 panel 讀的這一端，不改
+		// supervisor.sh 的寫入行為，檔案本身還是完整保留全部歷史。
+		b, err := os.ReadFile(filepath.Join(repo, ".ai", "supervisor", "run.log"))
+		if err != nil {
+			http.Error(w, "找不到 .ai/supervisor/run.log", 404)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		http.ServeFile(w, r, filepath.Join(repo, ".ai", "supervisor", "run.log"))
+		lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+		if len(lines) > maxRunlogLines {
+			fmt.Fprintf(w, "（只顯示最後 %d 行——run.log 是純 append、沒有輪替，完整內容還在檔案裡：%s）\n\n",
+				maxRunlogLines, filepath.Join(repo, ".ai", "supervisor", "run.log"))
+			lines = lines[len(lines)-maxRunlogLines:]
+		}
+		fmt.Fprintln(w, strings.Join(lines, "\n"))
 	})
 	http.HandleFunc("/api/backlog", func(w http.ResponseWriter, r *http.Request) {
 		// /api/state 只送前 5 筆待辦（避免大 backlog 拖慢每 5 秒的輪詢），
