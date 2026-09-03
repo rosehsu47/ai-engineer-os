@@ -110,7 +110,10 @@ V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前
 - **D2 `.ai/supervisor/events.jsonl`**：supervisor 機械發出 loop 層
   事件（rate-limit 睡眠、quota 煞車、watchdog、每迭代成本）；
   `/ai-report` 與 `dashboard.sh` 聚合讀取。三層事件模型定案：
-  task 層＝receipts、code 層＝git log、loop 層＝`events.jsonl`。
+  task 層＝receipts、code 層＝git log、loop 層＝`events.jsonl`。實作時
+  可參考通用的 `event_type/status/metadata` 三段式欄位切法（2026-09-03
+  一份外部 Observability 提案的建議），但範圍收斂在 supervisor 能機械
+  觀察到的 loop 層事件——不擴大到 session 內部，理由見 §4 新增條目。
 
 ## 4. 刻意不做
 
@@ -153,6 +156,18 @@ runtime，以下項目不在範圍內：
 - **真 YAML parser 依賴**：`tasks/*.yaml` 走「整檔重寫＋壞檔自癒」
   策略（AI-RUNTIME.md checkpoint 規則），刻意不引入外部 parser 依賴
   以保持 supervisor 是純 shell、零安裝依賴。
+- **session 內部 execution trace（tool-level／llm-level 事件，例如
+  `tool.called`、`llm.started`）**：跟「LLM 寫事件檔」同一類但範圍更大
+  的否決——`/ai-work` 對 supervisor 是一次不透明的 `claude -p` 黑盒呼叫，
+  沒有機制能機械觀察到內部的 tool/LLM 呼叫；要拿到這層資料只能靠 agent
+  自報（不可靠，就是「LLM 寫事件檔」被拒絕的理由）或耦合到特定 agent
+  CLI 的 hook 機制（例如 Claude Code 的 PreToolUse/PostToolUse），兩者
+  都跟「agent-agnostic」的既定方向相反（見 README「What's replaceable」、
+  本文件最小 agent 契約），也跟 README positioning 明講的「not an agent
+  framework, workflow engine, planner, or tool-calling layer」矛盾。
+  這層留給 agent CLI 自己的原生功能演化（見 §5 最大風險），本協定只管
+  loop 層與稽核層。（2026-09-03 一份外部 Observability 提案主張把這層
+  變成 runtime 一級概念，評估後否決，理由同上。）
 
 ## 5. 最大風險
 
