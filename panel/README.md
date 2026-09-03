@@ -150,8 +150,16 @@ repo path 記憶，5 秒重繪、卡片因狀態變動換組都不會跑掉。
   （原始文字，附加給 claude CLI），以及
   `--once`／`--review`／`--wait-on-pause`／`--ignore-quota`／`--yolo`
   五個開關（勾 `--yolo` 會多一次瀏覽器 confirm）；留白的欄位吃
-  `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行中會顯示 pid 與
-  log 連結（純文字，開新分頁看 stdout/stderr），同一列還有兩顆停止類
+  `.ai/schedule.yml` 的預設值，跟直接下指令一樣。執行前一定先跳
+  `confirm()` 顯示等效指令（跟下面 `.cmdpreview` 同一個字串，不是另外
+  重組一份）讓你先看過再確定，不會手滑誤按就送出。執行中會顯示 pid 與
+  最多兩個 log 連結：**`run.log`**（`.ai/supervisor/run.log`，
+  supervisor.sh 自己寫的協定層 log，不管這一輪是 panel 按鈕、launchd
+  排程還是你自己在終端機起的都一定存在，永遠顯示）、**`panel log`**
+  （純文字，開新分頁看 stdout/stderr，只有 panel 自己是這一輪的啟動者
+  才會有這份擷取檔，不是就不顯示——不然點下去會是 404，實測踩過：
+  kotoba 由 launchd 排程啟動，這份從沒被寫過，只有 `run.log` 能看）。
+  同一列還有兩顆停止類
   按鈕，特意用顏色分級拉開差距（不然文字都帶「停」、顏色又都紅，光看
   不看 tooltip 分不出差別——實測踩過這個坑）：**STOP**（中性灰，寫
   `.ai/STOP`，跟卡片下方那顆大的 STOP 是同一個信號旗機制，這裡是就近

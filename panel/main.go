@@ -58,7 +58,9 @@ type RepoState struct {
 	Missing                   bool     `json:"missing"` // .ai/ 不存在
 	SupervisorAlive           bool     `json:"supervisor_alive"`
 	SupervisorPID             int      `json:"supervisor_pid,omitempty"`
-	SessionActive             bool     `json:"session_active"` // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
+	SupervisorLogReady        bool     `json:"supervisor_log_ready"`    // panel 自己啟動時擷取的 stdout/stderr 檔存不存在——不存在代表這一輪不是 panel 啟動的（launchd 排程／手動終端機），只給 run.log 連結
+	SupervisorRunlogReady     bool     `json:"supervisor_runlog_ready"` // .ai/supervisor/run.log 存不存在——不管誰啟動都一定會有，除非還沒跑過第一輪
+	SessionActive             bool     `json:"session_active"`          // .ai/state/session.lock 存活——單次 /ai-work 或 /ai-review 呼叫正在跑（不論是 supervisor 還是人類互動呼叫的）
 	SessionPID                int      `json:"session_pid,omitempty"`
 	Stopped                   bool     `json:"stopped"` // .ai/STOP 存在
 	Phase                     string   `json:"phase"`
@@ -422,6 +424,21 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, supervisorLogFile(repo))
+	})
+	// /api/supervisor-runlog：跟上面那份不一樣——上面是 panel 自己啟動
+	// supervisor.sh 時才會產生的 stdout/stderr 擷取檔（只有 panel 是
+	// 啟動者才存在）；這份是 supervisor.sh 自己一直在寫的協定層 log
+	// （.ai/supervisor/run.log），不管這一輪是 panel 按鈕、launchd 排程
+	// （schedule-install.sh）還是你自己在終端機跑的，都一定存在——是
+	// 「這個 repo 現在到底在幹嘛」唯一保證找得到答案的地方。
+	http.HandleFunc("/api/supervisor-runlog", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if !allowed(currentRepos(), repo) {
+			http.Error(w, "unknown repo", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeFile(w, r, filepath.Join(repo, ".ai", "supervisor", "run.log"))
 	})
 	http.HandleFunc("/api/backlog", func(w http.ResponseWriter, r *http.Request) {
 		// /api/state 只送前 5 筆待辦（避免大 backlog 拖慢每 5 秒的輪詢），
@@ -857,6 +874,12 @@ func readRepo(path string, devCfg DevConfig) RepoState {
 		return s
 	}
 	s.SupervisorAlive, s.SupervisorPID = supervisorLockStatus(path)
+	if _, err := os.Stat(supervisorLogFile(path)); err == nil {
+		s.SupervisorLogReady = true
+	}
+	if _, err := os.Stat(filepath.Join(ai, "supervisor", "run.log")); err == nil {
+		s.SupervisorRunlogReady = true
+	}
 	s.SessionActive, s.SessionPID = sessionLockStatus(path)
 	_, err := os.Stat(filepath.Join(ai, "STOP"))
 	s.Stopped = err == nil

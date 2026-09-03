@@ -213,6 +213,17 @@ function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S
 // 不重做一個停止鍵）；沒在跑、且 panel 有帶 -supervisor-script 才給啟動
 // 表單——已煞車（stopped）時先隱藏，避免「啟動」跟「解除煞車」兩個按鈕
 // 同時出現讓人搞不清楚順序（supervisor.sh 開跑會先看到 .ai/STOP 立刻退出）。
+// supervisorLogLinks：run.log（.ai/supervisor/run.log，supervisor.sh 自己
+// 寫的協定層 log）永遠優先顯示——不管這一輪是 panel 按鈕、launchd 排程
+// （schedule-install.sh）還是你自己在終端機起的都一定存在。panel 自己
+// 擷取的那份 stdout/stderr（/api/supervisorlog）只有 panel 自己是啟動者
+// 才會有，只在確認存在時才多顯示第二個連結，不然點下去就是 404（實測
+// 踩過：kotoba 由 launchd 排程啟動，panel 這份從沒被寫過）。
+function supervisorLogLinks(s){
+  let h='';
+  if(s.supervisor_runlog_ready) h+=' <a href="/api/supervisor-runlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">run.log</a>';
+  if(s.supervisor_log_ready) h+=' <a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">panel log</a>';
+  return h; }
 function supervisorBox(s){
   if(s.supervisor_alive){
     const safeIdle=!s.session_active;
@@ -224,8 +235,8 @@ function supervisorBox(s){
     // 活著）——獨立一個「煞車生效中」分支，且不重複顯示 STOP 按鈕
     // （已經按過了），只在確認閒置時留 FORCE STOP 讓使用者選擇不等。
     if(s.stopped){
-      return '<div class="row">supervisor：<b style="color:#fb923c">煞車生效中</b>（pid '+s.supervisor_pid+'） '+
-        '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
+      return '<div class="row">supervisor：<b style="color:#fb923c">煞車生效中</b>（pid '+s.supervisor_pid+'）'+
+        supervisorLogLinks(s)+
         ' <span class="muted">· 已送出 STOP，等下一個安全點退出（quota 等待中最壞要等 quota_wait_recheck_minutes，預設 20 分鐘）</span>'+
         (safeIdle
           ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷，不用等它跑到下個檢查點">'+ICON_BAN+'<span>FORCE STOP</span></button>'
@@ -245,8 +256,8 @@ function supervisorBox(s){
     // 是同一個動作，data-act="stop" 走同一條路，這裡只是就近多一顆方便
     // 按的）；FORCE STOP 保留紅色——它才是真的不可逆、少用的那個，紅色
     // 留給它才有警示意義。
-    return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
-      '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
+    return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'）'+
+      supervisorLogLinks(s)+
       ' <button class="abtn neutral" data-act="stop" data-repo="'+esc(s.path)+'" title="寫 .ai/STOP——supervisor.sh 下一個檢查點會偵測到並優雅退出，不會打斷正在跑的這一輪"><span>STOP</span></button>'+
       (safeIdle
         ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">'+ICON_BAN+'<span>FORCE STOP</span></button>'
