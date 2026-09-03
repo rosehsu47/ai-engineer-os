@@ -16,6 +16,7 @@ repo (never in-process session state).
 | `supervisor/README.md` | The unattended loop (`supervisor.sh`) — recovery, cost breaker, kill switch |
 | `panel/README.md` | Local web control panel — multi-repo status, inline answers, STOP button |
 | `templates/` | Single source of truth for what gets copied into target repos — fix templates here, not per-repo copies |
+| `shared/models.md` | Claude API pricing reference (base rates + cache write/read multipliers) for the supervisor's planned cost cross-validation (ROADMAP §3 P1) — pricing snapshot, re-verify before relying on it for new work |
 | `CHANGELOG.md` | What changed, one line per commit — generated, never hand-edited. Regenerate with `scripts/gen-changelog.sh` |
 | `LESSONS.md` | This repo's own project-specific gotchas — see below |
 

@@ -1,7 +1,9 @@
 # aios-panel — 本機控制台
 
-一頁看所有 repo 的 agent 狀態，就地回答問題、踩煞車。**零外部依賴**
-（Go 標準庫），只綁 127.0.0.1、無認證——僅供本機使用。
+一頁看所有 repo 的 agent runtime 狀態——不只是「有沒有在跑」的列表，
+是 `.ai/` 協定檔案的窗口：在哪、做了什麼、為什麼停下；就地回答問題、
+踩煞車。**零外部依賴**（Go 標準庫），只綁 127.0.0.1、無認證——僅供
+本機使用。
 
 ```bash
 cd ai-engineer-os/panel
@@ -114,7 +116,10 @@ panel/devserver-launchd-install.sh --repo /path/to/repo --dry-run    # 只印 pl
 ⚪ 待命 → ⚫ 無待辦（尚未 `/ai-init` 的 repo 額外獨立一組排最後）。⚪ 待命跟
 ⚫ 無待辦的差別只在 backlog 是否為空——⚫ 沒有排隊中的任務，就算按了
 「啟動 supervisor」也只會立刻因為 `QUEUE_EMPTY` 收工，用不同分類提醒
-「這張卡不用你操心，但也沒什麼好啟動的」。
+「這張卡不用你操心，但也沒什麼好啟動的」。**沒有獨立的「失敗」組**：
+`TASK_PARTIAL`／`CONTRACT_HALT` 是單一任務的收尾結果，不會讓佇列停
+下來，下一輪照常挑下一筆任務，不是需要停留關注的「卡住」狀態——不給
+它常駐分類是刻意的，不是漏掉。
 
 **🔴 已煞車 vs 🟠 煞車生效中**：`.ai/STOP` 只在 supervisor.sh 的安全點才
 被檢查（見 `supervisor/README.md`「安全停止 vs 會製造孤兒行程的動作」），
