@@ -152,6 +152,11 @@ func main() {
 		for _, p := range repos {
 			states = append(states, readRepo(p, devCfg[p]))
 		}
+		// 明講不快取——這是每 5 秒輪詢的即時狀態，沒有任何 Cache-Control/
+		// ETag/Last-Modified 時瀏覽器理論上不該啟發式快取它，但排除這整
+		// 類問題比事後猜測便宜（使用者回報過「點擊啟動後畫面不會自動
+		// 更新，要手動重新整理」，重新整理必定繞過任何快取）。
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(states)
 	})

@@ -528,6 +528,19 @@ document.addEventListener('keydown', e=>{
     }
   } else if(e.key===' ' && expandedRepo){ e.preventDefault(); expandedRepo=null; renderList(); }
 });
+// safeItem：item(s) 拋錯時只讓那一張卡片顯示錯誤佔位，不讓整個
+// #grid.innerHTML 賦值連帶失敗——後者會讓 renderList() 整支拋出，
+// refresh() 的 try/catch 接到後畫面就整頁卡住不再更新，要手動重新整理
+// 才會恢復（實測回報過的症狀）。個別卡片壞掉是可以接受的降級，其他
+// repo 的狀態不該被拖累。
+function safeItem(s){
+  try{ return item(s); }
+  catch(e){
+    console.error('renderList: 這個 repo 的卡片渲染失敗，已跳過（其他卡片不受影響）', s&&s.path, e);
+    return '<div class="repo"><div class="rrow"><span class="dot missing"></span>'+
+      '<span class="rname">'+esc((s&&s.name)||'?')+'</span>'+
+      '<span class="rmeta">渲染失敗，看瀏覽器 console 的錯誤訊息</span></div></div>';
+  } }
 function renderList(){
   const saved=saveQaState(), savedSup=saveSupState();
   const groups={}; STATUS_ORDER.forEach(k=>groups[k]=[]);
@@ -541,7 +554,7 @@ function renderList(){
   if(expandedRepo && !renderOrder.includes(expandedRepo)) expandedRepo=null;
   let html='';
   STATUS_ORDER.forEach(k=>{ if(groups[k].length===0) return;
-    html+=groupHeader(k,groups[k].length)+groups[k].map(item).join(''); });
+    html+=groupHeader(k,groups[k].length)+groups[k].map(safeItem).join(''); });
   document.getElementById('grid').innerHTML=html;
   restoreQaState(saved);
   restoreSupState(savedSup);
@@ -550,7 +563,7 @@ async function refresh(){
   try{ const r=await fetch('/api/state'); lastList=await r.json();
     renderList();
     document.getElementById('ts').textContent='更新於 '+new Date().toLocaleTimeString();
-  }catch(e){ document.getElementById('ts').textContent='更新失敗：'+e; } }
+  }catch(e){ document.getElementById('ts').textContent='更新失敗：'+e; console.error('refresh() 失敗', e); } }
 function usagePct(label,pct){ if(pct<0) return '';
   const color=pct>=80?'#f87171':pct>=60?'#fbbf24':'#94a3b8';
   return label+' <b style="color:'+color+'">'+pct+'%</b>'; }

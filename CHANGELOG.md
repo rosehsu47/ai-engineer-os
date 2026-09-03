@@ -9,6 +9,8 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-03
 
+- fix(panel): isolate per-card render failures so one bad repo can't freeze the whole poll loop
+- fix(panel): move agent 的問題 (PAUSED question) to the top of the card
 - fix(panel): 'log' link 404s when supervisor wasn't started by panel
 
 ## 2026-09-02
