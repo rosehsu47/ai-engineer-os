@@ -213,6 +213,17 @@ function receiptRow(r){ const m=r.match(/^(\S+)\s\[(\w+)\]\s(\[human\]\s)?([\s\S
 // 不重做一個停止鍵）；沒在跑、且 panel 有帶 -supervisor-script 才給啟動
 // 表單——已煞車（stopped）時先隱藏，避免「啟動」跟「解除煞車」兩個按鈕
 // 同時出現讓人搞不清楚順序（supervisor.sh 開跑會先看到 .ai/STOP 立刻退出）。
+// supervisorLogLinks：run.log（.ai/supervisor/run.log，supervisor.sh 自己
+// 寫的協定層 log）永遠優先顯示——不管這一輪是 panel 按鈕、launchd 排程
+// （schedule-install.sh）還是你自己在終端機起的都一定存在。panel 自己
+// 擷取的那份 stdout/stderr（/api/supervisorlog）只有 panel 自己是啟動者
+// 才會有，只在確認存在時才多顯示第二個連結，不然點下去就是 404（實測
+// 踩過：kotoba 由 launchd 排程啟動，panel 這份從沒被寫過）。
+function supervisorLogLinks(s){
+  let h='';
+  if(s.supervisor_runlog_ready) h+=' <a href="/api/supervisor-runlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">run.log</a>';
+  if(s.supervisor_log_ready) h+=' <a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">panel log</a>';
+  return h; }
 function supervisorBox(s){
   if(s.supervisor_alive){
     const safeIdle=!s.session_active;
@@ -224,8 +235,8 @@ function supervisorBox(s){
     // 活著）——獨立一個「煞車生效中」分支，且不重複顯示 STOP 按鈕
     // （已經按過了），只在確認閒置時留 FORCE STOP 讓使用者選擇不等。
     if(s.stopped){
-      return '<div class="row">supervisor：<b style="color:#fb923c">煞車生效中</b>（pid '+s.supervisor_pid+'） '+
-        '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
+      return '<div class="row">supervisor：<b style="color:#fb923c">煞車生效中</b>（pid '+s.supervisor_pid+'）'+
+        supervisorLogLinks(s)+
         ' <span class="muted">· 已送出 STOP，等下一個安全點退出（quota 等待中最壞要等 quota_wait_recheck_minutes，預設 20 分鐘）</span>'+
         (safeIdle
           ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷，不用等它跑到下個檢查點">'+ICON_BAN+'<span>FORCE STOP</span></button>'
@@ -245,8 +256,8 @@ function supervisorBox(s){
     // 是同一個動作，data-act="stop" 走同一條路，這裡只是就近多一顆方便
     // 按的）；FORCE STOP 保留紅色——它才是真的不可逆、少用的那個，紅色
     // 留給它才有警示意義。
-    return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'） '+
-      '<a href="/api/supervisorlog?repo='+encodeURIComponent(s.path)+'" target="_blank" style="color:#e2e8f0;text-decoration:underline">log</a>'+
+    return '<div class="row">supervisor：<b style="color:#34d399">執行中</b>（pid '+s.supervisor_pid+'）'+
+      supervisorLogLinks(s)+
       ' <button class="abtn neutral" data-act="stop" data-repo="'+esc(s.path)+'" title="寫 .ai/STOP——supervisor.sh 下一個檢查點會偵測到並優雅退出，不會打斷正在跑的這一輪"><span>STOP</span></button>'+
       (safeIdle
         ? ' <button class="abtn solid-danger" data-act="supkill" data-repo="'+esc(s.path)+'" title="目前閒置中（沒有 /ai-work 或 /ai-review 正在跑），可以安全直接中斷 process，不用等它跑到下個檢查點">'+ICON_BAN+'<span>FORCE STOP</span></button>'
@@ -324,7 +335,21 @@ function persistBtn(s){
 // cardBody：展開後的完整內容（原本 card() 的全部細節），收合列只留
 // dot/名稱/一行摘要/時間——細節要選中才付出畫面成本。
 function cardBody(s){
-  let h=supervisorBox(s);
+  // ❓ agent 的問題放最上面——這是整張卡最急迫需要處理的事，原本排在
+  // 收據後面，有 backlog／收據多的 repo 要滑到底才看得到，使用者反饋
+  // 不方便。已回覆但還沒被下一輪消化的提示語意上跟這個問題是同一件事
+  // （回覆前後兩種狀態），一起挪上來。
+  let h='';
+  if(s.paused && !s.paused_answered){
+    h+='<div class="qa" data-repo="'+esc(s.path)+'"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>'+
+      '<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
+      '<button class="abtn primary" data-act="answer" data-repo="'+esc(s.path)+'"><span>送出回覆</span></button></div>'; }
+  else if(s.paused && s.paused_answered){
+    h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
+       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
+       '<br>下次想跳過這步：用 <code>--wait-on-pause</code>（或 schedule.yml 設 '+
+       '<code>wait_on_pause: true</code>）跑，撞到 PAUSED 不會退出，回覆後它自己 5 分鐘內接著跑</div>'; }
+  h+=supervisorBox(s);
   if(s.dev_command){
     if(s.dev_server_running){
       const who=s.dev_server_pid?'（pid '+s.dev_server_pid+'）':'（非 panel 啟動，無法追蹤 pid）';
@@ -354,15 +379,6 @@ function cardBody(s){
   }
   if((s.receipts||[]).length){ h+='<div class="section-label">最近收據</div>'+
     '<div class="receipts">'+s.receipts.map(receiptRow).join('')+'</div>'; }
-  if(s.paused && !s.paused_answered){
-    h+='<div class="qa" data-repo="'+esc(s.path)+'"><b>❓ agent 的問題</b><pre>'+esc(s.paused_question)+'</pre>'+
-      '<textarea placeholder="你的決定（會附寫進 PAUSED，下一輪 agent 自行路由）"></textarea>'+
-      '<button class="abtn primary" data-act="answer" data-repo="'+esc(s.path)+'"><span>送出回覆</span></button></div>'; }
-  else if(s.paused && s.paused_answered){
-    h+='<div class="dirty">✓ 問題已回覆，但不會自動觸發——需要你手動跑一輪：'+
-       '<br><code>supervisor/supervisor.sh --repo '+esc(s.path)+' --once</code>'+
-       '<br>下次想跳過這步：用 <code>--wait-on-pause</code>（或 schedule.yml 設 '+
-       '<code>wait_on_pause: true</code>）跑，撞到 PAUSED 不會退出，回覆後它自己 5 分鐘內接著跑</div>'; }
   if(s.dirty_count>0){
     h+='<div class="dirty">⚠ working tree 有 '+s.dirty_count+' 個未 commit 檔案 —— 未記帳的工作，'+
        '互動 session 收尾記得跑 <code>/ai-wrap</code></div>'; }
@@ -512,6 +528,19 @@ document.addEventListener('keydown', e=>{
     }
   } else if(e.key===' ' && expandedRepo){ e.preventDefault(); expandedRepo=null; renderList(); }
 });
+// safeItem：item(s) 拋錯時只讓那一張卡片顯示錯誤佔位，不讓整個
+// #grid.innerHTML 賦值連帶失敗——後者會讓 renderList() 整支拋出，
+// refresh() 的 try/catch 接到後畫面就整頁卡住不再更新，要手動重新整理
+// 才會恢復（實測回報過的症狀）。個別卡片壞掉是可以接受的降級，其他
+// repo 的狀態不該被拖累。
+function safeItem(s){
+  try{ return item(s); }
+  catch(e){
+    console.error('renderList: 這個 repo 的卡片渲染失敗，已跳過（其他卡片不受影響）', s&&s.path, e);
+    return '<div class="repo"><div class="rrow"><span class="dot missing"></span>'+
+      '<span class="rname">'+esc((s&&s.name)||'?')+'</span>'+
+      '<span class="rmeta">渲染失敗，看瀏覽器 console 的錯誤訊息</span></div></div>';
+  } }
 function renderList(){
   const saved=saveQaState(), savedSup=saveSupState();
   const groups={}; STATUS_ORDER.forEach(k=>groups[k]=[]);
@@ -525,7 +554,7 @@ function renderList(){
   if(expandedRepo && !renderOrder.includes(expandedRepo)) expandedRepo=null;
   let html='';
   STATUS_ORDER.forEach(k=>{ if(groups[k].length===0) return;
-    html+=groupHeader(k,groups[k].length)+groups[k].map(item).join(''); });
+    html+=groupHeader(k,groups[k].length)+groups[k].map(safeItem).join(''); });
   document.getElementById('grid').innerHTML=html;
   restoreQaState(saved);
   restoreSupState(savedSup);
@@ -534,7 +563,7 @@ async function refresh(){
   try{ const r=await fetch('/api/state'); lastList=await r.json();
     renderList();
     document.getElementById('ts').textContent='更新於 '+new Date().toLocaleTimeString();
-  }catch(e){ document.getElementById('ts').textContent='更新失敗：'+e; } }
+  }catch(e){ document.getElementById('ts').textContent='更新失敗：'+e; console.error('refresh() 失敗', e); } }
 function usagePct(label,pct){ if(pct<0) return '';
   const color=pct>=80?'#f87171':pct>=60?'#fbbf24':'#94a3b8';
   return label+' <b style="color:'+color+'">'+pct+'%</b>'; }
