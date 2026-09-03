@@ -15,42 +15,38 @@
 | CONTRACT.md 長期規則＋人類核可邊界 | `templates/ai/CONTRACT.md` §7；permission deny 雙重強制 | 完整 |
 | 任務佇列 | schema 於 AI-RUNTIME.md；選取演算法在 `templates/skills/ai-work/SKILL.md` 步驟 2（priority→FIFO，`depends_on`，`attempts`） | 完整 |
 | checkpoint 持久狀態 | `templates/ai/state/checkpoint.json`；無狀態 session＋整檔重寫，恢復與正常啟動同一條路 | 完整 |
-| Supervisor 自我恢復 | `supervisor/supervisor.sh`（分類器 9 類、rate-limit 睡到 reset、網路指數退避、成本斷路器、STOP 開關、quota 軟/硬門檻、watchdog、`--self-test`、`--doctor`/`--probe` 環境體檢） | 完整 |
+| Supervisor 自我恢復 | `supervisor/supervisor.sh`（分類器 9 類、rate-limit 睡到 reset（含 epoch 精確形）、網路指數退避、成本斷路器、STOP 開關、quota 軟/硬門檻、watchdog、狀態檔 lint（`lint_checkpoint`/`lint_tasks`）、`--self-test`、`--doctor`/`--probe` 環境體檢） | 完整 |
 | Rubrics 自評 | `templates/ai/rubrics/` 五份（含 content-completeness，docs 類任務窮舉覆蓋度核對），0-100 加權，≥80 過、60-79 改一輪、防吹牛條款 | 完整 |
 | Receipts 稽核 | schema 於 AI-RUNTIME.md；`receipts/YYYY-MM-DD/NNN.md` | 完整 |
 | Reports | `.claude/skills/ai-report/`（日報/週報/PR 描述/changelog/履歷素材） | 完整 |
 | Multi-agent | 五 persona 在單一 `/ai-work` session 內分工＋獨立 `/ai-review` round（`templates/skills/ai-review/SKILL.md`，`supervisor --review` 觸發）；平行寫入者刻意不做（single-writer invariant） | 完整（範圍已收斂，見 §2） |
 | GitHub 整合 | `.claude/skills/ai-ship/`（唯一碰網路的 skill，僅限人類觸發） | 完整 |
 | Dashboard | `panel/`（Go 控制台：多 repo 狀態、回答 PAUSED、STOP、啟動 supervisor、帳號用量）＋ `supervisor/dashboard.sh`（零額度靜態 HTML） | 完整 |
-| 事件收集 | 分散式：receipts frontmatter、`ai/queue` git log、`.ai/supervisor/` run 紀錄、`state/decisions.md` | 完整但分散（見 §2） |
-| schedule.yml | `templates/ai/schedule.yml` | 存在，但目前是 supervisor 調參檔，非時間排程（見 §2） |
+| 事件收集 | 三層各自為政（`AI-RUNTIME.md` 事件模型節，刻意不做統一匯流排）：task＝receipts、code＝git log、loop＝`.ai/supervisor/events.jsonl`（D2 已完成——`supervisor.sh` 機械發出，`/ai-report`／`dashboard.sh` 消費） | 完整 |
+| schedule.yml | `templates/ai/schedule.yml` ＋ `supervisor/schedule-install.sh`（D1 已完成——讀 `schedule_start_times` 產生 launchd 排程） | 完整 |
 
 ## 2. 誠實落差
 
-三個「完整」但名實或範圍有落差的地方，值得記下來而不是假裝沒有：
+一個「完整」但名實有落差的地方，值得記下來而不是假裝沒有：
 
-- **schedule.yml 名實不符**：檔名暗示時間排程，實際內容是
-  supervisor 的調參 key（quota 門檻、cost cap、iteration 上限）。目前
-  沒有任何東西讀它來決定「幾點啟動」——啟動永遠靠人類手動觸發。
-  D1 會補上這塊，讓名字對得起內容。
 - **「multi-agent」是 persona 分工，不是平行 agent**：五個角色
   （planner/coder/tester/reviewer/architect）在同一個 `/ai-work` session
   裡依序切換視角，`/ai-review` 是另一個獨立 session 但仍是*讀者*角色、
   不碰程式碼。這是刻意設計，不是縮水——single-writer invariant 是
   checkpoint/resume 可信的前提，平行寫入者會直接打破它（見 §4）。
-- **事件散落於各檔，無統一事件層**：想知道「supervisor 這輪為什麼睡了
-  20 分鐘」，答案在 `run.log` 文字裡，不是結構化資料；想知道「這個
-  repo 這週的任務事件時間軸」，要橫跨 receipts + git log + run.log
-  自己拼。D2 要補的就是這條 loop 層事件流。
+
+（原本記在這裡的另外兩條落差——schedule.yml 名實不符、事件散落無統一
+層——已分別由 D1／D2 補上，見 §1 對應列與 §3 異動記錄。）
 
 ## 3. 下一階段（進行中）
 
-以下工作包正在實作，依代號列出。**目前優先序：V1 與 P1 排最前**——
-V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前對外只能
-講「協定不假設 Claude 專屬功能」，不能講「已支援多 agent」）；P1 決定
-「安全跑一晚只花 $X」這個賣點在訂閱制（最大宗使用情境，不是 API-key
-計費）下是不是名副其實。C/D 底下的項目是持續性健壯度工作，沒有這兩項
-急迫。
+以下工作包正在實作，依代號列出——**只列真正還沒做完的**（上一輪稽核
+把已經上線的項目留在清單裡沒清掉，本輪核對 git log 後移除，見文末異動
+記錄）。**目前優先序：V1 與 P1 排最前**——V1 決定「agent-agnostic」這個
+定位敘事能不能站得住（在此之前對外只能講「協定不假設 Claude 專屬
+功能」，不能講「已支援多 agent」）；P1 決定「安全跑一晚只花 $X」這個
+賣點在訂閱制（最大宗使用情境，不是 API-key 計費）下是不是名副其實。
+C5 是持續性健壯度工作，不像 V1/P1 那樣急迫。
 
 **P — 定價與成本可見度**
 - **P1 訂閱制下的真實成本可見度**：`supervisor.sh` 的成本熔斷全部
@@ -68,13 +64,6 @@ V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前
   的數字直接餵進 cost breaker 的門檻判斷。
 
 **C — 健壯性**
-- **C1 rate-limit 偵測強化**：fixture 先行再放寬 classifier regex；
-  `sleep_until_reset` 支援 `limit reached|<epoch>` 形式的訊息。
-- **C2 狀態檔機械 lint**：supervisor 加 `lint_checkpoint`/`lint_tasks`
-  ——偵測歸 supervisor，修復仍歸 agent 協定自癒；`done.yaml` 救不回時
-  改名保留不清空（不能用會遺失稽核軌跡的方式復原）。
-- **C4 allowlist 補洞**：`Bash(date:*)`（時間戳協定強制要求）、
-  `Bash(git show:*)`（`/ai-review` 需要讀歷史 diff）。
 - **C5 receipt 宣稱機械交叉驗證（`files_changed`）**：supervisor（純
   bash）用 `git diff --stat` 核對 receipt frontmatter 的 `files_changed`
   清單跟該任務實際 commit 改到的檔案是否一致，對不上就計失敗——跟現有
@@ -103,17 +92,15 @@ V1 決定「agent-agnostic」這個定位敘事能不能站得住（在此之前
      降級（詞彙保留、策略停用），rate-limit 分類器先加 Codex 文案
      fixtures 再放寬。協定層 `.ai/` 檔案零改動。
 
-**D — 排程與觀測**
-- **D1 `supervisor/schedule-install.sh`**：launchd 產生器，讀
-  `schedule.yml` 新 key `schedule_start_times`，讓 schedule.yml 名實
-  相符（見 §2 第一條）。
-- **D2 `.ai/supervisor/events.jsonl`**：supervisor 機械發出 loop 層
-  事件（rate-limit 睡眠、quota 煞車、watchdog、每迭代成本）；
-  `/ai-report` 與 `dashboard.sh` 聚合讀取。三層事件模型定案：
-  task 層＝receipts、code 層＝git log、loop 層＝`events.jsonl`。實作時
-  可參考通用的 `event_type/status/metadata` 三段式欄位切法（2026-09-03
-  一份外部 Observability 提案的建議），但範圍收斂在 supervisor 能機械
-  觀察到的 loop 層事件——不擴大到 session 內部，理由見 §4 新增條目。
+**已完成（本輪稽核從「進行中」移除，2026-09-03）**：C1 rate-limit
+偵測強化（fixture 先行＋`epoch` 精確睡眠形式，見 `supervisor.sh`
+`sleep_until_reset`）、C2 狀態檔機械 lint（`lint_checkpoint`/
+`lint_tasks`）、C4 allowlist 補洞（`Bash(date:*)`/`Bash(git show:*)`，
+見 `templates/ai/settings.local.json`）、D1 `schedule-install.sh`
+（commit `0438f3e`）、D2 `.ai/supervisor/events.jsonl`（commit
+`e109ad0`，`event_type/status/metadata` 這類欄位切法可在未來擴充
+loop 層事件時參考，範圍仍收斂在 supervisor 能機械觀察到的事，見
+§4 新增條目）。都已反映進 §1 對照表。
 
 ## 4. 刻意不做
 
