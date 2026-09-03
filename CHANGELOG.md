@@ -9,8 +9,11 @@ commit subject，機械式一行一個改動）。**不要手動編輯這份檔�
 
 ## 2026-09-03
 
+- fix(panel): no-store on the page shell too, not just /api/state
 - fix(panel): isolate per-card render failures so one bad repo can't freeze the whole poll loop
+- docs(roadmap): create shared/models.md, resolving the dangling P1 citation
 - fix(panel): move agent 的問題 (PAUSED question) to the top of the card
+- docs(roadmap): resync vision-vs-reality table with what actually shipped
 - fix(panel): 'log' link 404s when supervisor wasn't started by panel
 
 ## 2026-09-02
